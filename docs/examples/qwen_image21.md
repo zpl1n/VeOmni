@@ -53,7 +53,7 @@ Select `data.source_name: Qwen-Image-2.1-Edit` and
 in the embedding and offline stages too. Text-to-image uses `Qwen-Image-2.1`
 and `enable_edit: false`. A run uses one of these two data layouts.
 
-The `qwen_image21_online` transform preserves alpha from files and encoded image
+The `qwen_image21_online` transform uses its own RGBA loader to preserve alpha from files and encoded image
 bytes. It feeds RGBA to the VAE; the official prompt encoder composites reference
 images over white for Qwen3-VL. Reference geometry also follows the image processor's
 pixel limits and patch-grid rounding before either encoder runs. The released processor

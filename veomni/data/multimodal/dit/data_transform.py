@@ -1,7 +1,10 @@
+from io import BytesIO
+
 import PIL
+import requests
 
 from ...data_transform import DATA_TRANSFORM_REGISTRY
-from ..image_utils import fetch_images
+from ..image_utils import fetch_images, smart_resize
 from ..preprocess import conv_preprocess
 from ..video_utils import fetch_videos
 
@@ -22,11 +25,32 @@ def process_dit_online_example(example, source_name, **kwargs):
     return [processed_example]
 
 
+def load_qwen_image21_rgba(image):
+    """Load Qwen-Image 2.1 images without discarding their alpha channel."""
+    if isinstance(image, str):
+        if image.startswith(("http://", "https://")):
+            response = requests.get(image, timeout=(5, 30))
+            response.raise_for_status()
+            image = BytesIO(response.content)
+        with PIL.Image.open(image) as loaded:
+            return loaded.convert("RGBA")
+    if isinstance(image, bytes):
+        with PIL.Image.open(BytesIO(image)) as loaded:
+            return loaded.convert("RGBA")
+    raise NotImplementedError
+
+
 @DATA_TRANSFORM_REGISTRY.register("qwen_image21_online")
 def process_qwen_image21_online_example(example, source_name, **kwargs):
-    """Preserve alpha for the Qwen-Image 2.1 VAE on both target and reference images."""
-    kwargs["image_mode"] = "RGBA"
-    return process_dit_online_example(example, source_name, **kwargs)
+    """Load RGBA images using a model-specific path, preserving shared RGB loaders."""
+    inputs, outputs, images, videos = conv_preprocess(source=source_name, conversations=example, **kwargs)
+    if kwargs.get("use_audio_in_video", False):
+        raise NotImplementedError("Audio in video is not supported yet for dit training.")
+    videos, _ = fetch_videos(videos, use_audio_in_video=False, **kwargs)
+    images = [load_qwen_image21_rgba(image) for image in images]
+    images = images[: kwargs.get("max_image_nums", len(images))]
+    images = [smart_resize(image, **kwargs) for image in images]
+    return [{"inputs": inputs, "outputs": outputs, "images": images, "videos": videos}]
 
 
 @DATA_TRANSFORM_REGISTRY.register("minimax_h3_online")
