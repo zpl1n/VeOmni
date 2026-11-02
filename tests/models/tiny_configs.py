@@ -476,6 +476,32 @@ def tiny_qwen_image_config(architecture: str = "QwenImageTransformer2DModel", **
     return QwenImageTransformer2DModelConfig(**kwargs)
 
 
+def tiny_qwen_image21_config(architecture: str = "QwenImage21Transformer2DModel", **overrides) -> PretrainedConfig:
+    """Keep 2.1's single-stream and shared modulation layout at a small test size."""
+    from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.configuration_qwen_image21_transformer import (
+        QwenImage21Transformer2DConfig,
+    )
+
+    kwargs = {
+        "patch_size": 1,
+        "in_channels": 8,
+        "out_channels": 8,
+        "num_layers": 2,
+        "attention_head_dim": 16,
+        "num_attention_heads": 2,
+        "context_in_dim": 16,
+        "mlp_ratio": 2,
+        "axes_dims_rope": (4, 6, 6),
+        "eps": 1e-6,
+        "causal_condition": True,
+        "architectures": [architecture],
+        "tie_word_embeddings": False,
+        "attn_implementation": "eager",
+    }
+    kwargs.update(overrides)
+    return QwenImage21Transformer2DConfig(**kwargs)
+
+
 def tiny_qwen_image_condition_config(architecture: str = "QwenImageConditionModel", **overrides) -> PretrainedConfig:
     from veomni.models.diffusers.qwen_image.qwen_image_condition.configuration_qwen_image_condition import (
         QwenImageConditionModelConfig,

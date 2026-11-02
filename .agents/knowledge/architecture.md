@@ -88,6 +88,16 @@ veomni/
 └── utils/              Shared utilities (logging, device, constants, helpers)
 ```
 
+### Qwen-Image 2.1 diffusion training
+
+`models/diffusers/qwen_image21/` wraps the pinned Diffusers single-stream DiT,
+with model-local block-causal attention and real-valued NPU rotary embeddings.
+Its frozen condition model uses Qwen3-VL and the RGBA VAE for online encoding or
+cached offline training. `qwen_image21_online` preserves image alpha; existing
+image transforms keep their RGB default. The standard `DiTTrainer` handles all
+three stages without model-specific trainer branches. FSDP2 is supported; SP/CP
+are explicitly rejected. See `docs/examples/qwen_image21.md`.
+
 ### FlexAttention package
 
 Flex is a package under `veomni/ops/kernels/attention/standard/flex/`: `__init__.py` owns dispatch/Ulysses, `_inputs.py` owns input handling, `_fa4.py` owns compiled execution, and `_fa4_sm90_compat.py` owns the pinned bounds shim. The mask builder remains in `attention/mask/flex.py`.

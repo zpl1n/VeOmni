@@ -1,0 +1,23 @@
+{
+  "_class_name": "QwenImage21Transformer2DModel",
+  "_diffusers_version": "0.41.0",
+  "model_type": "qwen_image21_transformer",
+  "architectures": ["QwenImage21Transformer2DModel"],
+  "patch_size": 1,
+  "in_channels": 8,
+  "out_channels": 8,
+  "num_layers": 2,
+  "attention_head_dim": 16,
+  "num_attention_heads": 2,
+  "context_in_dim": 16,
+  "mlp_ratio": 2,
+  "axes_dims_rope": [4, 6, 6],
+  "eps": 0.000001,
+  "causal_condition": true,
+  "tie_word_embeddings": false,
+  "ops_implementation": {
+    "attn_implementation": "eager",
+    "rms_norm_implementation": "eager",
+    "rotary_pos_emb_implementation": "eager"
+  }
+}

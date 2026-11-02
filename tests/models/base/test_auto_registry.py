@@ -108,6 +108,9 @@ from tests.models.tiny_configs import (
     tiny_qwen3_vl_moe_config as _tiny_qwen3_vl_moe_config,
 )
 from tests.models.tiny_configs import (
+    tiny_qwen_image21_config as _tiny_qwen_image21_config,
+)
+from tests.models.tiny_configs import (
     tiny_qwen_image_config as _tiny_qwen_image_config,
 )
 from tests.models.tiny_configs import (
@@ -193,6 +196,8 @@ class _ModelCase:
     # ops selection stamped before HF construction. Families that keep HF attn
     # as eager leave HF attn as eager; stamping sdpa makes PreTrainedModel reject them.
     stamps_hf_attn: bool = True
+    # Some architectures deliberately support only portable attention backends.
+    alternate_op_impl: tuple[str, str] | None = None
 
 
 # NPU glm_moe_dsa indexer keeps Hugging Face scoring and does not bind
@@ -599,6 +604,18 @@ _MODEL_CASES = (
         stamps_hf_attn=False,
     ),
     _ModelCase(
+        model_type="qwen_image21_transformer",
+        config_factory=_tiny_qwen_image21_config,
+        architectures=("QwenImage21Transformer2DModel",),
+        has_registered_config=True,
+        registered_config_aliases=("QwenImage21Transformer2DModel", "qwen_image21"),
+        registered_model_aliases=("QwenImage21Transformer2DModel", "qwen_image21"),
+        eager_ops=(("transformer_blocks.0.attn.processor.veomni_attn", "attention"),),
+        isolation_op_path="transformer_blocks.0.attn.processor.veomni_attn",
+        stamps_hf_attn=False,
+        alternate_op_impl=("attn_implementation", "veomni_sdpa"),
+    ),
+    _ModelCase(
         model_type="wan",
         eager_ops=(
             ("blocks.0.self_attn.norm_q.veomni_rms_norm", "rms_norm"),
@@ -631,7 +648,13 @@ _MODEL_CASES = (
     [
         case
         for case in _MODEL_CASES
-        if case.model_type in {"WanTransformer3DModel", "LTXVideoTransformerModel", "QwenImageTransformer2DModel"}
+        if case.model_type
+        in {
+            "WanTransformer3DModel",
+            "LTXVideoTransformerModel",
+            "QwenImageTransformer2DModel",
+            "qwen_image21_transformer",
+        }
     ],
     ids=lambda case: case.model_type,
 )
@@ -775,7 +798,7 @@ def test_model_instances_keep_distinct_impls(model_case: _ModelCase, available_n
     selected_op = attrgetter(selected_path)
     assert selected_op(eager).impl == "eager"
     eager_bindings = _op_bindings(eager, selected_path)
-    field, alternate_impl = _ALTERNATE_OP_IMPLS[selected_op(eager).op]
+    field, alternate_impl = model_case.alternate_op_impl or _ALTERNATE_OP_IMPLS[selected_op(eager).op]
     alternate_config = eager_ops_config()
     setattr(alternate_config, field, alternate_impl)
     alternate = construct(alternate_config)

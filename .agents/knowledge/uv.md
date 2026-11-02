@@ -143,6 +143,13 @@ limited to the SM90-SM100 range. The GPU extra also installs
 `tilelang==0.1.9`. DeepSeek V4 TileLang and TileKernels tests cover that
 resolved combination — bump the two packages and the override as a set.
 
+The exact FA2 and x86_64 FA3 wheel versions also declare
+`tool.uv.dependency-metadata`, preserving their `requires-dist` entries from the
+existing lockfile. This avoids fetching whole GitHub wheel archives solely for
+metadata when range responses are unavailable. It does not change their sources,
+artifact hashes or torch/CUDA pins. Update or remove those version-specific
+metadata blocks when changing the corresponding wheels.
+
 Two pyproject knobs make the remaining git source builds succeed:
 
 1. **`[[tool.uv.dependency-metadata]]`** — these projects ship no usable

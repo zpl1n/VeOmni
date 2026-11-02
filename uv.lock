@@ -7,36 +7,36 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
@@ -82,6 +82,21 @@ overrides = [
 [[manifest.dependency-metadata]]
 name = "create-block-mask-cuda"
 version = "0.1"
+
+[[manifest.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.4+20260608.cu130torch2110cxx11abitrue.bc58ab.sm80sm89sm90sm100"
+requires-dist = ["einops", "torch"]
+
+[[manifest.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.4+20260610.cu130torch2110cxx11abitrue.fb02fc.sm80sm89sm90sm100"
+requires-dist = ["einops", "torch"]
+
+[[manifest.dependency-metadata]]
+name = "flash-attn-3"
+version = "3.0.0+20260610.cu130torch2110cxx11abitrue.fb02fc.sm90"
+requires-dist = ["einops", "ninja", "packaging", "torch"]
 
 [[manifest.dependency-metadata]]
 name = "flash-attn-cute"
@@ -293,18 +308,18 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f8/b6/83129e0337376214b0304893cbf0ad0a54718bb47845517fa5870439ca0b/av-14.2.0.tar.gz", hash = "sha256:132b5d52ca262b97b0356e8f48cbbe54d0ac232107a722ab8cc8c0c19eafa17b", size = 4063022, upload-time = "2025-02-25T13:51:40.676Z" }
@@ -514,14 +529,11 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.3.0"
+version = "8.5.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4", size = 276943, upload-time = "2025-09-18T17:32:23.696Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/0e/7fa0ef50764b67090eca4114772a2abf8b6148198475e54c660b97caeee6/click-8.5.0.tar.gz", hash = "sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34", size = 382235, upload-time = "2026-08-26T13:33:14.56Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/d3/9dcc0f5797f070ec8edf30fbadfb200e71d9db6b84d211e3b2085a7589a0/click-8.3.0-py3-none-any.whl", hash = "sha256:9b9f285302c6e3064f4330c05f05b81945b2a39544279343e6e7c5f27a9baddc", size = 107295, upload-time = "2025-09-18T17:32:22.42Z" },
+    { url = "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl", hash = "sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360", size = 125251, upload-time = "2026-08-26T13:33:12.928Z" },
 ]
 
 [[package]]
@@ -857,11 +869,10 @@ wheels = [
 
 [[package]]
 name = "diffusers"
-version = "0.37.0"
+version = "0.41.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
-    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "importlib-metadata" },
     { name = "numpy" },
@@ -870,9 +881,9 @@ dependencies = [
     { name = "requests" },
     { name = "safetensors" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/3b/01d0ff800b811c5ad8bba682f4c6abf1d7071cd81464c01724333fefb7ba/diffusers-0.37.0.tar.gz", hash = "sha256:408789af73898585f525afd07ca72b3955affea4216a669558e9f59b5b1fe704", size = 4141136, upload-time = "2026-03-05T14:58:39.704Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/bc/34a91d366fe8e546637d702403e4d8cd5dbdf705a15fb3725d34a7ab3416/diffusers-0.41.0.tar.gz", hash = "sha256:69dcced7230b6bc0b70b5c6cfdff1aa62da487ab52ae74b642e46b1b9bfacc47", size = 5026281, upload-time = "2026-10-06T06:24:14.884Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/55/586a3a2b9c95f371c9c3cb048c3cac15aedcce8d6d53ebd6bbc46860722d/diffusers-0.37.0-py3-none-any.whl", hash = "sha256:7eab74bf896974250b5e1027cae813aba1004f02d97c9b44891b83713386aa08", size = 5000449, upload-time = "2026-03-05T14:58:37.361Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/c4/5bf8afd1ff3a8d99da7a18b1067ae0b4e2a037c38f3851890a989c511fd3/diffusers-0.41.0-py3-none-any.whl", hash = "sha256:ea8918b7dfd92ce793b6db689a551b8cd25d52c6c0fcd3ade0706a5fd2a25990", size = 6063887, upload-time = "2026-10-06T06:24:12.455Z" },
 ]
 
 [[package]]
@@ -1306,18 +1317,18 @@ wheels = [
 
 [[package]]
 name = "hf-xet"
-version = "1.5.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/74/d8/5c06fc76461418326a7decf8367480c35be11a41fd938633929c60a9ec6b/hf_xet-1.5.0.tar.gz", hash = "sha256:e0fb0a34d9f406eed88233e829a67ec016bec5af19e480eac65a233ea289a948", size = 837196, upload-time = "2026-05-06T06:18:15.583Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/18/d91c20f815df6cc496a5d0ad8db6d274dad5c0cfcd59babfa2440a9aba44/hf_xet-1.8.0.tar.gz", hash = "sha256:10ed23b51dacf7917d64f335c25048deb470efa755e9989b218fc0531386138e", size = 1013014, upload-time = "2026-10-30T10:04:33.741Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/fb/69ff198a82cae7eb1a69fb84d93b3a3e4816564d76817fe541ddc96874eb/hf_xet-1.5.0-cp37-abi3-macosx_10_12_x86_64.whl", hash = "sha256:dad0dc84e941b8ba3c860659fe1fdc35c049d47cce293f003287757e971a8f56", size = 4030814, upload-time = "2026-05-06T06:17:57.933Z" },
-    { url = "https://files.pythonhosted.org/packages/9b/ff/edcc2b40162bef3ff78e14ab637e5f3b89243d6aee72f5949d3bb6a5af83/hf_xet-1.5.0-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:fd6e5a9b0fdac4ed03ed45ef79254a655b1aaab514a02202617fbf643f5fdf7a", size = 3798444, upload-time = "2026-05-06T06:17:55.79Z" },
-    { url = "https://files.pythonhosted.org/packages/49/4d/103f76b04310e5e57656696cc184690d20c466af0bca3ca88f8c8ea5d4f3/hf_xet-1.5.0-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:3531b1823a0e6d77d80f9ed15ca0e00f0d115094f8ac033d5cae88f4564cc949", size = 4465986, upload-time = "2026-05-06T06:17:44.886Z" },
-    { url = "https://files.pythonhosted.org/packages/c4/a2/546f47f464737b3edbab6f8ddb57f2599b93d2cbb66f06abb475ccb48651/hf_xet-1.5.0-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:9a0ee58cd18d5ea799f7ed11290bbccbe56bdd8b1d97ca74b9cc49a3945d7a3b", size = 4259865, upload-time = "2026-05-06T06:17:42.639Z" },
-    { url = "https://files.pythonhosted.org/packages/95/7f/1be593c1f28613be2e196473481cd81bfc5910795e30a34e8f744f6cac4f/hf_xet-1.5.0-cp37-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:1e60df5a42e9bed8628b6416af2cba4cba57ae9f02de226a06b020d98e1aab18", size = 4459835, upload-time = "2026-05-06T06:18:08.026Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/b2/703569fc881f3284487e68cda7b42179978480da3c438042a6bbbb4a671c/hf_xet-1.5.0-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4b35549ce62601b84da4ff9b24d970032ace3d4430f52d91bcbb26c901d6c690", size = 4672414, upload-time = "2026-05-06T06:18:09.864Z" },
-    { url = "https://files.pythonhosted.org/packages/af/37/1b6def445c567286b50aa3b33828158e135b1be44938dde59f11382a500c/hf_xet-1.5.0-cp37-abi3-win_amd64.whl", hash = "sha256:2806c7c17b4d23f8d88f7c4814f838c3b6150773fe339c20af23e1cfaf2797e4", size = 3977238, upload-time = "2026-05-06T06:18:23.621Z" },
-    { url = "https://files.pythonhosted.org/packages/62/94/3b66b148778ee100dcfd69c2ca22b57b41b44d3063ceec934f209e9184ce/hf_xet-1.5.0-cp37-abi3-win_arm64.whl", hash = "sha256:b6c9df403040248c76d808d3e047d64db2d923bae593eb244c41e425cf6cd7be", size = 3806916, upload-time = "2026-05-06T06:18:21.7Z" },
+    { url = "https://files.pythonhosted.org/packages/97/74/d89d5235524bc14d8519e12ca8bc5204f45009ae83d63a410f52c29eb4a8/hf_xet-1.8.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e00d8f60170cd3dd55d98306e41dbaf28b27ff1bcfefbfa84279d197221be83e", size = 3875002, upload-time = "2026-10-30T10:04:18.958Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/f2/ef25e2085e92dcaeaa675331e443923aed2006f6fe2d984e15d8b8d40766/hf_xet-1.8.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:3e8934784425781f0f779b91044df441f3a7af4dab47375d7e3aeaecbb8eecb4", size = 3600947, upload-time = "2026-10-30T10:04:20.906Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/1e/1e8ecc05ef034e9a95c18ed32d2ec07905a7cd2ca611a9d88e25ee1f4850/hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:29dab7c904cd1914a0439c6e1306c12c7497c8bd32290fbe563ebf51ca4b6d6d", size = 4292483, upload-time = "2026-10-30T10:04:22.875Z" },
+    { url = "https://files.pythonhosted.org/packages/35/c4/127a1548df019ea4c80f06e685f263e146075143335a02e78a3c41dbc4eb/hf_xet-1.8.0-cp38-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:8800e3444770f2c630b361bc6d5c6ebb770b7830646cf632fbb79d0e5bbc9e7f", size = 4069340, upload-time = "2026-10-30T10:04:24.664Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/d5/281cd82736c3e181e597588589d2204d3a5c388a464d4a2a8c546995bae9/hf_xet-1.8.0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:a584a7b3268da62f23c3187cc7201ca01f7b610985a36b1b6119c66bccb0383c", size = 4272344, upload-time = "2026-10-30T10:04:26.519Z" },
+    { url = "https://files.pythonhosted.org/packages/48/77/886f09e91a5eadb054ce03b8855323cd2a72f20db76ab4119e0ecda65eef/hf_xet-1.8.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1ebaf248c9bef8bb0c9d1d8d71db1fdf0cac14f922cc7a936a81adbf12eb5f01", size = 4500689, upload-time = "2026-10-30T10:04:28.394Z" },
+    { url = "https://files.pythonhosted.org/packages/97/4d/2c76a992b370ff77d0b5219275779f8c9a7dabb8ee649deb265dfed84d0f/hf_xet-1.8.0-cp38-abi3-win_amd64.whl", hash = "sha256:92188598dedc1e1f5609bd718d4db8687a6c89915553912571e2f587892eecec", size = 3911559, upload-time = "2026-10-30T10:04:30.165Z" },
+    { url = "https://files.pythonhosted.org/packages/87/91/fdb1454a43eff8011047d176ada2f0fb4926cf3d74b87357ff35793f6d98/hf_xet-1.8.0-cp38-abi3-win_arm64.whl", hash = "sha256:42b66fdc688eaa4ff3eb77dc9275e5a0f1258ecc9fdd083ddaf43bb49bec925b", size = 3738458, upload-time = "2026-10-30T10:04:31.882Z" },
 ]
 
 [[package]]
@@ -1350,9 +1361,10 @@ wheels = [
 
 [[package]]
 name = "huggingface-hub"
-version = "1.15.0"
+version = "1.33.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "click" },
     { name = "filelock" },
     { name = "fsspec" },
     { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
@@ -1360,12 +1372,11 @@ dependencies = [
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "tqdm" },
-    { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bb/b6/e22bd20a25299c34b8c5922c1545a6320825b13906eb0f7298edfd034a0b/huggingface_hub-1.15.0.tar.gz", hash = "sha256:28abfdddda3927fd4de6a63cf26ab012498a2c24dae52baf150c5c6edf98a1d5", size = 784100, upload-time = "2026-05-15T11:42:52.149Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/2a/484d112c0d8fc5f665d7b65137ac9cdb2953c982391598c3597968a12ee7/huggingface_hub-1.33.0.tar.gz", hash = "sha256:367be21a201db9523eddf8aeac7048f2602c1b308691c97640d5e72ed188007e", size = 1043548, upload-time = "2026-09-24T09:49:29.971Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/11/0b64cc9024329b76d7547c19a67604a61d21d3ba678a69d1b220c29d5112/huggingface_hub-1.15.0-py3-none-any.whl", hash = "sha256:a4a59af04cbc41a3fe3fec429b171ef994ef8c971eda10136746f408dd4e3744", size = 663602, upload-time = "2026-05-15T11:42:50.487Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl", hash = "sha256:04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899", size = 846435, upload-time = "2026-09-24T09:49:28.059Z" },
 ]
 
 [[package]]
@@ -2755,38 +2766,26 @@ name = "pydantic"
 version = "2.11.9"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
 ]
 dependencies = [
-    { name = "annotated-types", marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
-    { name = "pydantic-core", version = "2.33.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
-    { name = "typing-extensions", marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
-    { name = "typing-inspection", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
+    { name = "annotated-types", marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "pydantic-core", version = "2.33.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-inspection", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ff/5d/09a551ba512d7ca404d785072700d3f6727a02f6f3c24ecfd081c7cf0aa8/pydantic-2.11.9.tar.gz", hash = "sha256:6b8ffda597a14812a7975c90b82a8a2e777d9257aba3453f973acd3c032a18e2", size = 788495, upload-time = "2025-09-13T11:26:39.325Z" }
 wheels = [
@@ -2799,17 +2798,17 @@ version = "2.13.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "annotated-types", marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
-    { name = "pydantic-core", version = "2.46.5", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
-    { name = "typing-inspection", version = "0.4.4", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "annotated-types", marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "pydantic-core", version = "2.46.5", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-inspection", version = "0.4.4", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/53/ef/fc4f868f4e2cee79f863883abffceff107875f569b848507319842d2a681/pydantic-2.13.5.tar.gz", hash = "sha256:51a9c5f7b2f8e636f04c6cada605d9b6a3bf1348fdf945a3d8869b19bba0ee08", size = 845750, upload-time = "2026-08-28T14:04:00.916Z" }
 wheels = [
@@ -2826,35 +2825,23 @@ name = "pydantic-core"
 version = "2.33.2"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
 ]
 dependencies = [
-    { name = "typing-extensions", marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ad/88/5f2260bdfae97aabf98f1778d43f69574390ad787afb646292a638c923d4/pydantic_core-2.33.2.tar.gz", hash = "sha256:7cb8bc3605c29176e1b105350d2e6474142d7c1bd1d9327c4a9bdb46bf827acc", size = 435195, upload-time = "2025-04-23T18:33:52.104Z" }
 wheels = [
@@ -2903,14 +2890,14 @@ version = "2.46.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "typing-extensions", marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/af/f9/8a06bea35ef8daf588f707784c973a7046e0034c8d8cfb08828eeffb8b75/pydantic_core-2.46.5.tar.gz", hash = "sha256:10416c15b8839ecc4ef4d0885da76da6fd0f67333a0eb8aff6d93c4b8f2910fc", size = 472262, upload-time = "2026-08-28T10:01:31.677Z" }
 wheels = [
@@ -3825,10 +3812,10 @@ resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and sys_platform != 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and sys_platform != 'linux'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
@@ -4125,17 +4112,17 @@ resolution-markers = [
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchaudio-2.10.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:28813664c4c86557921f0ae0ef0f624e065132b02c525bff599e7656e19ef727", upload-time = "2026-01-21T15:05:38Z" },
-    { url = "https://download-r2.pytorch.org/whl/cu129/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:09ff7cc26c5f91e8c18d70329949fe15812d064b5a2eaa46f48a0a4509d92874", upload-time = "2026-01-21T15:05:50Z" },
     { url = "https://download-r2.pytorch.org/whl/cpu/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:d35900f4689cb0164195b31263a769987c8953412197a6b4b758218d2e2dbc86", upload-time = "2026-01-21T15:05:38Z" },
-    { url = "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:ebed6d8f87d65d17898a9ccb41720f865d0f3370cd7d2a2469f86708aa908cf3", upload-time = "2026-01-21T15:05:51Z" },
     { url = "https://download-r2.pytorch.org/whl/cu126/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:13f620ddf17b7da3287b2aad8dc552ea9908d2103307bb052c4d7fd3cffe81d3", upload-time = "2026-01-21T15:05:47Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu129/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:09ff7cc26c5f91e8c18d70329949fe15812d064b5a2eaa46f48a0a4509d92874", upload-time = "2026-01-21T15:05:50Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:ebed6d8f87d65d17898a9ccb41720f865d0f3370cd7d2a2469f86708aa908cf3", upload-time = "2026-01-21T15:05:51Z" },
     { url = "https://download-r2.pytorch.org/whl/cu128/torchaudio-2.10.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:4424c1360016a025b86e4c0ae4b05b5faf094138ee566ac849f355f2f8d20c6b", upload-time = "2026-01-21T15:05:48Z" },
     { url = "https://download-r2.pytorch.org/whl/cpu/torchaudio-2.10.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:085f1b72339e4321005b9aacd7d06b1c64e5f3a2e3ff9fc6ad598bfb6fdecec4", upload-time = "2026-01-21T15:05:38Z" },
     { url = "https://download-r2.pytorch.org/whl/cu126/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:185c22baefd1f2210331390a0ba9688b83661a17ab165581902c90dae9a10a87", upload-time = "2026-01-21T15:05:47Z" },
     { url = "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:48f3cdca445f1c82e7d8738d1ea97cceacf6c5bce239f5f5ec223af66ac91dd2", upload-time = "2026-01-21T15:05:51Z" },
-    { url = "https://download-r2.pytorch.org/whl/cu129/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:413512c9cd45468c6541955f62bfb78f497163b536d6fd0645c2319d8a046909", upload-time = "2026-01-21T15:05:50Z" },
-    { url = "https://download-r2.pytorch.org/whl/cu128/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:acc25d445e259794a30bd7827ddd3c812b090ab35ef42fb2a7ab4c91148e8c65", upload-time = "2026-01-21T15:05:48Z" },
     { url = "https://download-r2.pytorch.org/whl/cpu/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:4a511f5d55ee0348052670e5834800774e426ce1685d87b482ac9e2324074bb7", upload-time = "2026-01-21T15:05:38Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu128/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:acc25d445e259794a30bd7827ddd3c812b090ab35ef42fb2a7ab4c91148e8c65", upload-time = "2026-01-21T15:05:48Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu129/torchaudio-2.10.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:413512c9cd45468c6541955f62bfb78f497163b536d6fd0645c2319d8a046909", upload-time = "2026-01-21T15:05:50Z" },
 ]
 
 [[package]]
@@ -4144,10 +4131,10 @@ version = "2.10.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and sys_platform != 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and sys_platform != 'linux'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -4213,10 +4200,10 @@ resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and sys_platform != 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and sys_platform != 'linux'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 wheels = [
@@ -4364,10 +4351,10 @@ version = "0.25.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and sys_platform != 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and sys_platform != 'linux'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -4490,10 +4477,10 @@ version = "3.6.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and sys_platform != 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux'",
@@ -4547,35 +4534,23 @@ name = "typing-inspection"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra != 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra == 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'linux' and extra != 'extra-6-veomni-gpu' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64'",
 ]
 dependencies = [
-    { name = "typing-extensions", marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f8/b1/0c11f5058406b3af7609f121aaa6b609744687f1d158b3c3a5bf4cc94238/typing_inspection-0.4.1.tar.gz", hash = "sha256:6ae134cc0203c33377d43188d4064e9b357dba58cff3185f22924610e70a9d28", size = 75726, upload-time = "2025-05-21T18:55:23.885Z" }
 wheels = [
@@ -4588,14 +4563,14 @@ version = "0.4.4"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "typing-extensions", marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c09092e6b34058f36a460eea2d4c3e8b910c695975a0/typing_inspection-0.4.4.tar.gz", hash = "sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47", size = 76928, upload-time = "2026-08-12T12:37:25.997Z" }
 wheels = [
@@ -4862,9 +4837,9 @@ requires-dist = [
     { name = "deep-gemm", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'gpu'", url = "https://github.com/verl-project/verl-wheelhouse/releases/download/deep-gemm-5081f8513af57e61696de4f4f04b0e707ffb503e-py3.12-torch2.11.0-cu130/deep_gemm-2.8.2%2B5081f85-cp312-cp312-linux_aarch64.whl" },
     { name = "deep-gemm", marker = "python_full_version == '3.11.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'gpu'", url = "https://github.com/verl-project/verl-wheelhouse/releases/download/deep-gemm-5081f8513af57e61696de4f4f04b0e707ffb503e-py3.11-torch2.11.0-cu130/deep_gemm-2.8.2%2B5081f85-cp311-cp311-linux_x86_64.whl" },
     { name = "deep-gemm", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'gpu'", url = "https://github.com/verl-project/verl-wheelhouse/releases/download/deep-gemm-5081f8513af57e61696de4f4f04b0e707ffb503e-py3.12-torch2.11.0-cu130/deep_gemm-2.8.2%2B5081f85-cp312-cp312-linux_x86_64.whl" },
-    { name = "diffusers", marker = "extra == 'gpu'", specifier = "==0.37.0" },
-    { name = "diffusers", marker = "extra == 'npu'", specifier = "==0.37.0" },
-    { name = "diffusers", marker = "extra == 'npu-aarch64'", specifier = "==0.37.0" },
+    { name = "diffusers", marker = "extra == 'gpu'", specifier = "==0.41.0" },
+    { name = "diffusers", marker = "extra == 'npu'", specifier = "==0.41.0" },
+    { name = "diffusers", marker = "extra == 'npu-aarch64'", specifier = "==0.41.0" },
     { name = "einops", specifier = ">=0.8.1" },
     { name = "expecttest", marker = "extra == 'dev'", specifier = ">=0.3.0,<0.4" },
     { name = "flash-attn", marker = "python_full_version == '3.11.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'gpu'", url = "https://github.com/Luosuu/flash-attention3-wheels/releases/download/v0.0.3/flash_attn-2.8.4+20260608.cu130torch2110cxx11abitrue.bc58ab.sm80sm89sm90sm100-cp311-cp311-linux_x86_64.whl" },
@@ -4997,8 +4972,8 @@ dependencies = [
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "protobuf" },
-    { name = "pydantic", version = "2.11.9", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra == 'extra-6-veomni-npu' or extra == 'extra-6-veomni-npu-aarch64'" },
-    { name = "pydantic", version = "2.13.5", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-veomni-gpu') or (sys_platform == 'linux' and extra == 'extra-6-veomni-magi') or (sys_platform == 'linux' and extra != 'extra-6-veomni-npu' and extra != 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "pydantic", version = "2.11.9", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
+    { name = "pydantic", version = "2.13.5", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux' or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-gpu' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu') or (extra == 'extra-6-veomni-magi' and extra == 'extra-6-veomni-npu-aarch64') or (extra == 'extra-6-veomni-npu' and extra == 'extra-6-veomni-npu-aarch64')" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "sentry-sdk" },

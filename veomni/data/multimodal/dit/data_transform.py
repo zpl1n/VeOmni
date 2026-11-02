@@ -22,6 +22,13 @@ def process_dit_online_example(example, source_name, **kwargs):
     return [processed_example]
 
 
+@DATA_TRANSFORM_REGISTRY.register("qwen_image21_online")
+def process_qwen_image21_online_example(example, source_name, **kwargs):
+    """Preserve alpha for the Qwen-Image 2.1 VAE on both target and reference images."""
+    kwargs["image_mode"] = "RGBA"
+    return process_dit_online_example(example, source_name, **kwargs)
+
+
 @DATA_TRANSFORM_REGISTRY.register("minimax_h3_online")
 def process_minimax_h3_online_example(example, source_name, **kwargs):
     """Raw data loading for MiniMax-H3 FL2VA.

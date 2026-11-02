@@ -89,7 +89,7 @@ gpu = [
   "av>=14.0.0,<14.3; python_version == '3.12'",
   "librosa>=0.11.0,<0.12",
   "soundfile>=0.13.1,<0.14",
-  "diffusers==0.37.0",
+  "diffusers==0.41.0",
   "ftfy",
   "peft==0.18.1",
   "megatron-energon>=7.2.1",
@@ -121,7 +121,7 @@ npu = [
   "av>=14.0.0,<14.3; python_version == '3.12'",
   "librosa>=0.11.0,<0.12",
   "soundfile>=0.13.1,<0.14",
-  "diffusers==0.37.0",
+  "diffusers==0.41.0",
   "ftfy",
   "peft==0.18.1",
   "megatron-energon>=7.2.1",
@@ -141,7 +141,7 @@ npu_aarch64 = [
   "av>=14.0.0,<14.3; python_version == '3.12'",
   "librosa>=0.11.0,<0.12",
   "soundfile>=0.13.1,<0.14",
-  "diffusers==0.37.0",
+  "diffusers==0.41.0",
   "ftfy",
   "peft==0.18.1",
   "megatron-energon>=7.2.1",
@@ -303,6 +303,24 @@ explicit = true
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu/"
 explicit = true
+
+# Exact runtime metadata for the pinned prebuilt GitHub FA2/FA3 wheels.
+# Avoids metadata downloads when GitHub does not serve wheel range requests.
+# Re-audit these requirements whenever the wheel versions change.
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.4+20260608.cu130torch2110cxx11abitrue.bc58ab.sm80sm89sm90sm100"
+requires-dist = ["einops", "torch"]
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.4+20260610.cu130torch2110cxx11abitrue.fb02fc.sm80sm89sm90sm100"
+requires-dist = ["einops", "torch"]
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn-3"
+version = "3.0.0+20260610.cu130torch2110cxx11abitrue.fb02fc.sm90"
+requires-dist = ["einops", "ninja", "packaging", "torch"]
 
 # The Magi packages below intentionally use empty static runtime metadata.
 # Their companion extensions declare no runtime requirements upstream, while

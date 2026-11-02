@@ -13,6 +13,7 @@ def tom_and_jerry_preprocess(conversations, **kwargs):
     return prompt, outputs, images, videos
 
 
+@PREPROCESSOR_REGISTRY.register("Qwen-Image-2.1")
 @PREPROCESSOR_REGISTRY.register("Qwen-Image")
 @PREPROCESSOR_REGISTRY.register("QwenImage")
 def qwen_image_preprocess(conversations, **kwargs):
@@ -39,6 +40,7 @@ def qwen_image_preprocess(conversations, **kwargs):
     return [("text", prompt)], [("image", None)], [image], []
 
 
+@PREPROCESSOR_REGISTRY.register("Qwen-Image-2.1-Edit")
 @PREPROCESSOR_REGISTRY.register("Qwen-Image-Edit")
 @PREPROCESSOR_REGISTRY.register("QwenImageEdit")
 def qwen_image_edit_preprocess(conversations, **kwargs):
