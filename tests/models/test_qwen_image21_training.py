@@ -46,11 +46,13 @@ from veomni.arguments.arguments_types import AcceleratorConfig
 from veomni.data import build_data_transform, build_dataloader, build_dataset
 from veomni.distributed import parallel_state
 from veomni.models import build_foundation_model
-from veomni.models.diffusers.qwen_image21.qwen_image21 import modeling_qwen_image21
-from veomni.models.diffusers.qwen_image21.qwen_image21.configuration_qwen_image21 import (
+from veomni.models.diffusers.qwen_image21.qwen_image21_condition import modeling_qwen_image21_condition
+from veomni.models.diffusers.qwen_image21.qwen_image21_condition.configuration_qwen_image21_condition import (
     QwenImage21ConditionModelConfig,
 )
-from veomni.models.diffusers.qwen_image21.qwen_image21.modeling_qwen_image21 import QwenImage21ConditionModel
+from veomni.models.diffusers.qwen_image21.qwen_image21_condition.modeling_qwen_image21_condition import (
+    QwenImage21ConditionModel,
+)
 from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen_image21_transformer import (
     QwenImage21Transformer2DModel,
 )
@@ -69,7 +71,7 @@ def cpu_rank(tmp_path_factory):
     previous_threads = torch.get_num_threads()
     rendezvous = tmp_path_factory.mktemp("qwen21_gloo") / "rendezvous"
     with pytest.MonkeyPatch.context() as patch, torch.random.fork_rng(devices=[]):
-        patch.setattr(modeling_qwen_image21, "get_device_type", lambda: "cpu")
+        patch.setattr(modeling_qwen_image21_condition, "get_device_type", lambda: "cpu")
         patch.setattr(parallel_state, "get_device_type", lambda: "cpu")
         torch.set_num_threads(1)
         torch.distributed.init_process_group("gloo", init_method=rendezvous.as_uri(), rank=0, world_size=1)

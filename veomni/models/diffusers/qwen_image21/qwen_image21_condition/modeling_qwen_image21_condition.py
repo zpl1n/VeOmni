@@ -15,7 +15,7 @@ from veomni.distributed.parallel_state import get_parallel_state
 from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.utils.device import get_device_type
 
-from .configuration_qwen_image21 import QwenImage21ConditionModelConfig
+from .configuration_qwen_image21_condition import QwenImage21ConditionModelConfig
 
 
 class QwenImage21ConditionModel(VeOmniPreTrainedModel):
