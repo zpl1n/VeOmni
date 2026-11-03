@@ -62,6 +62,18 @@ train:
   seed: 42
   num_train_epochs: 1
   max_steps: 100
+  # Enable with --train.profile.enable true; capture steps [5, 7).
+  profile:
+    enable: false
+    start_step: 5
+    end_step: 7
+    trace_dir: output/qwen_image21_sft/profile
+    record_shapes: true
+    profile_memory: true
+    with_stack: false
+    with_modules: false
+    rank0_only: true
+
   checkpoint:
     output_dir: output/qwen_image21_sft
     save_epochs: 1

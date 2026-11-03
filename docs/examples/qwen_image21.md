@@ -131,6 +131,18 @@ DiT cache format serializes tensor fields with pickle.
   sharding; it does not divide the token sequence. Different image layouts use
   list batches processed sample by sample.
 
+## Performance profiling
+
+All three example YAMLs include a disabled `train.profile` section. Add
+`--train.profile.enable true` to the training command to collect steps `[5, 7)`
+(steps 5 and 6), with tensor shapes and memory statistics on rank 0. On Ascend,
+the framework uses `torch_npu.profiler`; no model-code changes are required.
+Traces are written under `output/qwen_image21_<stage>/profile`, where `<stage>`
+is `sft`, `embedding`, or `offline`. Run enough batches to reach step 7 so the
+collection can finish. Set `--train.profile.rank0_only false` for all-rank
+communication analysis; this increases overhead and output size. Profiling adds
+overhead, so measure final throughput separately with profiling disabled.
+
 ## Validation
 
 The regression tests use locally generated tiny components, without downloading
