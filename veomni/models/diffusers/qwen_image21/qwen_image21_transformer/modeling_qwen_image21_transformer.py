@@ -278,6 +278,7 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
         img_shapes,
         img_mask,
         training_target=None,
+        loss_weight=None,
         encoder_hidden_states_mask=None,
         latents=None,
         return_dict=True,
@@ -303,13 +304,22 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
         else:
             fields = tuple([field] for field in fields)
             masks = [encoder_hidden_states_mask]
+        count = len(fields[0])
+        weights = [None] * count if loss_weight is None else loss_weight
+        if not isinstance(weights, list):
+            weights = [weights]
+        if len(weights) != count:
+            raise ValueError("loss_weight must match the training sample count.")
         predictions, losses = [], []
-        for sample, step, embeddings, shapes, slots, target, mask in zip(*fields, masks):
+        for sample, step, embeddings, shapes, slots, target, mask, weight in zip(*fields, masks, weights):
             prediction = self.predict_noise(sample, step, embeddings, shapes, slots, mask, return_dict=False)[0]
             if prediction.shape != target.shape:
                 raise ValueError("Qwen-Image 2.1 prediction and training_target shapes must match exactly.")
             predictions.append(prediction)
-            losses.append(F.mse_loss(prediction.float(), target.float(), reduction="none").flatten(1).mean(1))
+            loss = F.mse_loss(prediction.float(), target.float(), reduction="none").flatten(1).mean(1)
+            if weight is not None:
+                loss = loss * weight.to(device=loss.device, dtype=loss.dtype)
+            losses.append(loss)
         return QwenImage21ModelOutput(loss={"mse_loss": torch.cat(losses).mean()}, predictions=predictions)
 
     def save_pretrained(self, path, **kwargs):

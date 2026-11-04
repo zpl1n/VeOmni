@@ -107,10 +107,12 @@ DiT cache format serializes tensor fields with pickle.
 ## Training semantics and limits
 
 - This integration uses the VAE posterior mode for targets and references.
-  It samples a discrete flow-matching timestep uniformly from the loaded
-  scheduler's shifted schedule, using the target latent count for dynamic shift.
+  The examples use `training_recipe: diffsynth`: uniform index sampling from a
+  1,000-step schedule with fixed exponential shift `mu=0.8`, terminal sigma 0.02,
+  and normalized timestep loss weights. Set `training_recipe: diffusers` to use
+  the previous snapshot-based dynamic shift and unweighted MSE.
   The noisy target is `(1-sigma) * latent + sigma * noise`, and the target velocity
-  is `noise - latent`. Loss is FP32 MSE over target tokens, averaged per sample.
+  is `noise - latent`. Loss is FP32 MSE over target tokens, weighted before averaging per sample.
 - Reference latents stay clean and precede the noisy target. The official
   interleaving, causal text attention, and bidirectional attention within each
   image block are preserved. Reference and text positions receive no direct MSE.
@@ -172,3 +174,11 @@ If Ascend reports `EI0020` because its default HCCL port is occupied, set
 `HCCL_NPU_SOCKET_PORT_RANGE=auto` in the launch environment, as described in the
 [HCCL port documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/commlib/hcclug/docs/en/user_guide/hccl_env/HCCL_NPU_SOCKET_PORT_RANGE.md).
 This was required for the validation host; it is separate from the model config.
+
+The DiffSynth recipe follows `FlowMatchScheduler.set_timesteps_qwen_image` and
+`set_training_weight` in [DiffSynth-Studio](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/diffusion/flow_match.py).
+Schedule construction stays on CPU FP32; sampled times and loss weights stay FP32
+to avoid quantizing timestep lookup through BF16. This aligns the schedule and
+loss equations, not bitwise RNG or all mixed-precision details of another framework.
+Existing raw-posterior embedding caches can be reused when only the recipe changes;
+changing the recipe changes the optimization objective, so compare experiments explicitly.

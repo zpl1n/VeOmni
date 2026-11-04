@@ -14,6 +14,7 @@ class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
         height: int = 1024,
         width: int = 1024,
         num_train_timesteps: int = 1000,
+        training_recipe: str = "diffusers",
         enable_edit: bool = False,
         seed: int = 42,
         image_resize_mode: str = "resize",
@@ -34,6 +35,9 @@ class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
         for name, dtype in (("text_encoder_dtype", text_encoder_dtype), ("vae_dtype", vae_dtype)):
             if dtype not in ("float32", "bfloat16", "float16"):
                 raise ValueError(f"{name} must be float32, bfloat16 or float16.")
+        if training_recipe not in ("diffusers", "diffsynth"):
+            raise ValueError("training_recipe must be 'diffusers' or 'diffsynth'.")
+        self.training_recipe = training_recipe
         self.base_model_path = base_model_path
         self.processor_subfolder = processor_subfolder
         self.text_encoder_subfolder = text_encoder_subfolder

@@ -304,12 +304,14 @@ class _Runtime:
 
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "edit"])
 @pytest.mark.parametrize("offline", [False, True], ids=["online", "offline"])
-def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit, offline):
+@pytest.mark.parametrize("recipe", ["diffusers", "diffsynth"])
+def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit, offline, recipe):
     batch = raw_batch(tmp_path, edit)
     condition = condition_model(snapshot, edit=edit)
     if offline:
         batch = condition.get_condition(**batch)
         condition = condition_model(snapshot, edit=edit, offline=True)
+    condition.config.training_recipe = recipe
     config = tiny_config()
     config.in_channels = config.out_channels = 64
     model = QwenImage21Transformer2DModel(config).train()
@@ -423,3 +425,49 @@ def test_reference_resize_matches_processor_grid(snapshot, resolution, reference
     assert shape == (1, prepared.height // 16, prepared.width // 16)
     assert parameters.shape[-2:] == shape[-2:]
     assert model._prepare_image(reference).size == (resolution, resolution)
+
+
+@pytest.mark.parametrize("steps", [16, 1000])
+def test_diffsynth_training_schedule_and_weight(snapshot, steps):
+    model = condition_model(snapshot, offline=True)
+    model.config.training_recipe = "diffsynth"
+    model.config.num_train_timesteps = steps
+    model._prepare_timesteps(4096)
+    # Independent reference equations from DiffSynth FlowMatchScheduler.
+    import math
+
+    reference = torch.linspace(1, 0, steps + 1)[:-1]
+    reference = math.exp(0.8) / (math.exp(0.8) + (1 / reference - 1))
+    scale = (1 - reference[-1]) / 0.98
+    reference = 1 - (1 - reference) / scale
+    curve = torch.exp(-2 * ((reference * 1000 - 500) / 1000) ** 2)
+    curve -= curve.min()
+    weights = curve * (1000 / curve.sum())
+    if steps != 1000:
+        weights *= steps / 1000
+        weights += weights[1].clone()
+    torch.testing.assert_close(model.scheduler.sigmas, reference, atol=0, rtol=0)
+    torch.testing.assert_close(model._training_weights, weights, atol=0, rtol=0)
+    model._prepare_timesteps(16384)
+    torch.testing.assert_close(model.scheduler.sigmas, reference, atol=0, rtol=0)
+
+
+def test_diffsynth_weight_flows_from_condition_to_training(snapshot):
+    condition = condition_model(snapshot)
+    condition.config.training_recipe = "diffsynth"
+    encoded = condition.get_condition(inputs=["a boat"], images=[[Image.new("RGBA", (32, 32))]])
+    inputs = condition.process_condition(**encoded)
+    model = QwenImage21Transformer2DModel(tiny_config())
+    # Use a matching tiny DiT input contract for the loss/gradient check below.
+    from tests.models.diffusers.test_qwen_image21 import sample_inputs
+
+    sample = sample_inputs()
+    target = torch.randn(1, 8, 8)
+    weight = inputs["loss_weight"][0]
+    plain = model(**sample, training_target=target).loss["mse_loss"]
+    weighted = model(**sample, training_target=target, loss_weight=weight).loss["mse_loss"]
+    torch.testing.assert_close(weighted, plain * weight.squeeze())
+    parameter = model.proj_out.weight
+    plain_grad = torch.autograd.grad(plain, parameter)[0]
+    weighted_grad = torch.autograd.grad(weighted, parameter)[0]
+    torch.testing.assert_close(weighted_grad, plain_grad * weight.squeeze(), atol=1e-6, rtol=1e-5)

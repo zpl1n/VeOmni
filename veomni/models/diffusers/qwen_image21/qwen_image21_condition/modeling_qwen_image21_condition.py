@@ -209,6 +209,25 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
     def _prepare_timesteps(self, image_seq_len):
         if self._timesteps_image_seq_len == image_seq_len:
             return
+        if self.config.training_recipe == "diffsynth":
+            # DiffSynth FlowMatchScheduler Qwen-Image training defaults (CPU FP32).
+            steps = self.config.num_train_timesteps
+            sigmas = torch.linspace(1.0, 0.0, steps + 1)[:-1]
+            sigmas = math.exp(0.8) / (math.exp(0.8) + (1 / sigmas - 1))
+            one_minus = 1 - sigmas
+            sigmas = 1 - one_minus / (one_minus[-1] / (1 - 0.02))
+            timesteps = sigmas * 1000
+            curve = torch.exp(-2 * ((timesteps - 500) / 1000) ** 2)
+            curve = curve - curve.min()
+            weights = curve * (1000 / curve.sum())
+            if steps != 1000:
+                weights = weights * (steps / 1000)
+                weights = weights + weights[1]
+            self.scheduler.timesteps = timesteps.to(self.generator.device)
+            self.scheduler.sigmas = sigmas.to(self.generator.device)
+            self._training_weights = weights.to(self.generator.device)
+            self._timesteps_image_seq_len = image_seq_len
+            return
         cfg = self.scheduler.config
         base_len, max_len = cfg.get("base_image_seq_len", 256), cfg.get("max_image_seq_len", 4096)
         if base_len == max_len:
@@ -255,6 +274,8 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 "latents",
             )
         }
+        if self.config.training_recipe == "diffsynth":
+            result["loss_weight"] = []
         for parameters, context, shapes, image_mask, context_mask, refs, ref_shapes in zip(latents, *fields):
             target, target_shape = self._pack_posterior(parameters)
             if [tuple(shape) for shape in shapes] != [target_shape]:
@@ -283,13 +304,18 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 generator=self.generator,
             )
             timestep = self.scheduler.timesteps[indices]
+            if self.config.training_recipe == "diffsynth":
+                result["loss_weight"].append(self._training_weights[indices])
             sigma = self.scheduler.sigmas[indices].to(target.dtype).view(1, 1, 1)
             noisy_target = (1 - sigma) * target + sigma * noise
             image_mask = image_mask.to(device=target.device, dtype=torch.bool)
             result["hidden_states"].append(torch.cat([*packed_refs, noisy_target], dim=1))
             result["training_target"].append(noise - target)
             result["latents"].append(target)
-            result["timestep"].append(timestep / self.scheduler.config.num_train_timesteps)
+            time_scale = (
+                1000 if self.config.training_recipe == "diffsynth" else self.scheduler.config.num_train_timesteps
+            )
+            result["timestep"].append(timestep / time_scale)
             result["encoder_hidden_states"].append(context.to(target.device))
             result["encoder_hidden_states_mask"].append(
                 None if context_mask is None else context_mask.to(target.device)
