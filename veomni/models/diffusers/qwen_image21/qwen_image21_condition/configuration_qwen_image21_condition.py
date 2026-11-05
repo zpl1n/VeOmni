@@ -2,7 +2,7 @@ from veomni.models.configuration_base import VeOmniPretrainedConfig
 
 
 class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
-    model_type = "qwen_image21"
+    model_type = "QwenImage21ConditionModel"
 
     def __init__(
         self,

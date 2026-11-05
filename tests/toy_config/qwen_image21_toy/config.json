@@ -1,7 +1,7 @@
 {
   "_class_name": "QwenImage21Transformer2DModel",
   "_diffusers_version": "0.41.0",
-  "model_type": "qwen_image21_transformer",
+  "model_type": "QwenImage21Transformer2DModel",
   "architectures": ["QwenImage21Transformer2DModel"],
   "patch_size": 1,
   "in_channels": 8,

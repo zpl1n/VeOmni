@@ -14,8 +14,8 @@ QWEN_IMAGE21_INIT_SIGNATURE = inspect.signature(QwenImage21Transformer2DModel.__
 class QwenImage21Transformer2DConfig(VeOmniPretrainedConfig):
     _supports_context_parallel = True
     _supports_npu_context_parallel = True
-    model_type = "qwen_image21_transformer"
-    condition_model_type = "qwen_image21"
+    model_type = "QwenImage21Transformer2DModel"
+    condition_model_type = "QwenImage21ConditionModel"
 
     def __init__(
         self,

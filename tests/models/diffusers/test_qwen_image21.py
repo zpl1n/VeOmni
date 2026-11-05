@@ -158,7 +158,8 @@ def test_checkpoint_roundtrip_preserves_upstream_names_and_attention(tmp_path):
     model.load_state_dict(official.state_dict(), strict=True)
     model.save_pretrained(tmp_path)
     reloaded = QwenImage21Transformer2DModel.from_pretrained(tmp_path, ops_implementation=tiny_ops()).eval()
-    assert reloaded.config.model_type == "qwen_image21_transformer"
+    assert reloaded.config.model_type == "QwenImage21Transformer2DModel"
+    assert reloaded.config.condition_model_type == "QwenImage21ConditionModel"
     assert reloaded.state_dict().keys() == official.state_dict().keys()
     for key, expected in official.state_dict().items():
         torch.testing.assert_close(reloaded.state_dict()[key], expected, atol=0, rtol=0)

@@ -33,6 +33,12 @@ Qwen-Image-2.1/
 components must come from the same snapshot. The transformer keeps the upstream
 parameter names and saves an upstream-compatible Diffusers transformer config.
 
+Model type names follow `qwen_image`: `QwenImage21Transformer2DModel` for the
+transformer and `QwenImage21ConditionModel` for the condition model. Python package
+names remain `qwen_image21_transformer` and `qwen_image21_condition`. When reusing
+older configs or checkpoints, update their `model_type` and any explicit
+`condition_model_type` fields to these class names.
+
 ## Data
 
 Use JSONL records with a prompt and a target image. Relative image paths are
