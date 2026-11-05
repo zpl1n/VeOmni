@@ -95,8 +95,9 @@ with model-local block-causal attention and real-valued NPU rotary embeddings.
 Its `qwen_image21_condition/` package follows the Qwen-Image condition naming and uses Qwen3-VL and the RGBA VAE for online encoding or
 cached offline training. `qwen_image21_online` preserves image alpha; existing
 image transforms keep their RGB default. The standard `DiTTrainer` handles all
-three stages without model-specific trainer branches. FSDP2 is supported; SP/CP
-are explicitly rejected. See `docs/examples/qwen_image21.md`.
+three stages without model-specific trainer branches. FSDP2 supports separate
+Ulysses SP (all-to-all) or CP (local queries with all-gathered K/V); combined
+CP/Ulysses is still rejected by the framework. See `docs/examples/qwen_image21.md`.
 
 ### FlexAttention package
 

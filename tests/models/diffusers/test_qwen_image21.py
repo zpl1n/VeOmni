@@ -31,6 +31,12 @@ from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen
 )
 
 
+@pytest.fixture(autouse=True)
+def cpu_diffusers_normalization(monkeypatch):
+    # Package availability must not select NPU RMSNorm for CPU references.
+    monkeypatch.setattr("diffusers.models.normalization.is_torch_npu_available", lambda: False)
+
+
 def tiny_config(attention="sdpa"):
     config = tiny_qwen_image21_config()
     config._set_ops_implementation(tiny_ops(attention))

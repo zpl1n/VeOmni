@@ -25,6 +25,7 @@ from veomni.models.modeling_base import VeOmniPreTrainedModel as PreTrainedModel
 from veomni.ops import VeomniOp
 
 from .configuration_qwen_image21_transformer import QWEN_IMAGE21_INIT_SIGNATURE, QwenImage21Transformer2DConfig
+from .parallel import parallel_attention, parallel_forward
 
 
 _SUPPORTED_ATTENTION = frozenset({"eager", "sdpa", "veomni_sdpa"})
@@ -133,7 +134,9 @@ class QwenImage21AttnProcessor:
                 key = torch.cat((cached_key, key), dim=1)
                 value = torch.cat((cached_value, value), dim=1)
 
-        if segments is None:
+        if get_parallel_state().sp_enabled:
+            output = parallel_attention(self._attention, attn, query, key, value, segments, key_valid)
+        elif segments is None:
             output = self._attention(attn, query, key, value, attention_mask)
         else:
             outputs = []
@@ -209,8 +212,8 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
         self._internal_dict = value
 
     def _install_veomni_attention(self):
-        if get_parallel_state().sp_enabled:
-            raise ValueError("Qwen-Image 2.1 sequence parallelism is not implemented; set Ulysses and CP sizes to 1.")
+        if self.config.num_attention_heads % get_parallel_state().ulysses_size:
+            raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
         # Positional tables are non-parameter data; keep their initialization on CPU even under meta init.
         with torch.device("cpu"):
             self.pos_embed = QwenImage21DeviceRope(theta=10000, axes_dim=list(self.config.axes_dims_rope))
@@ -242,8 +245,6 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
         encoder_hidden_states_mask=None,
         return_dict=True,
     ):
-        if get_parallel_state().sp_enabled:
-            raise ValueError("Qwen-Image 2.1 sequence parallelism is not implemented.")
         img_shapes = self._normalize_img_shapes(img_shapes)
         target_tokens = prod(img_shapes[0][-1])
         if target_tokens % 4:
@@ -258,16 +259,27 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
             raise ValueError("A tensor batch must share img_mask; use list batches for different layouts.")
         if hidden_states.shape[1] != sum(prod(shape) for shape in img_shapes[0]):
             raise ValueError("hidden_states must contain all condition-image latents followed by target latents.")
-        output = _QwenImage21Transformer2DModel.forward(
-            self,
-            hidden_states=hidden_states.to(self.dtype),
-            encoder_hidden_states=encoder_hidden_states.to(self.dtype),
-            timestep=timestep,
-            img_shapes=img_shapes,
-            img_mask=img_mask.bool(),
-            encoder_hidden_states_mask=encoder_hidden_states_mask,
-            return_dict=False,
-        )[0][:, -target_tokens:]
+        if get_parallel_state().sp_enabled:
+            output = parallel_forward(
+                self,
+                hidden_states.to(self.dtype),
+                encoder_hidden_states.to(self.dtype),
+                timestep,
+                img_shapes,
+                img_mask.bool(),
+                encoder_hidden_states_mask,
+            )
+        else:
+            output = _QwenImage21Transformer2DModel.forward(
+                self,
+                hidden_states=hidden_states.to(self.dtype),
+                encoder_hidden_states=encoder_hidden_states.to(self.dtype),
+                timestep=timestep,
+                img_shapes=img_shapes,
+                img_mask=img_mask.bool(),
+                encoder_hidden_states_mask=encoder_hidden_states_mask,
+                return_dict=False,
+            )[0][:, -target_tokens:]
         return Transformer2DModelOutput(sample=output) if return_dict else (output,)
 
     def forward(

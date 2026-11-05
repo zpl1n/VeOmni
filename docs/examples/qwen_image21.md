@@ -128,10 +128,45 @@ DiT cache format serializes tensor fields with pickle.
 - Supported attention selections are `eager` and `sdpa` (`veomni_sdpa` alias).
   Use SDPA for training; eager materializes attention scores. NPU rotary
   computation transfers real positional tables, avoiding complex NPU tensors.
-- Sequence/context parallelism is not implemented for this model and fails
-  explicitly. Keep `ulysses_size: 1` and `cp_size: 1`. FSDP2 provides parameter
-  sharding; it does not divide the token sequence. Different image layouts use
-  list batches processed sample by sample.
+- Ulysses SP shards the interleaved joint sequence and uses head/sequence
+  all-to-all inside attention. `num_attention_heads` must be divisible by
+  `ulysses_size` (32 heads in the released model). CP instead keeps queries
+  local and all-gathers K/V; this is a correctness baseline, not Ring Attention.
+  Full K/V is materialized per CP rank and communication is not overlapped.
+  Both paths shard block activations, preserve image boundaries and padding,
+  and gather predictions with the gradient scaling required by FSDP2.
+- The framework currently rejects combined CP and Ulysses. Enable one axis
+  at a time. Tensor batches must share a layout; list samples are processed
+  separately. The training adapter does not expose distributed inference KV caching.
+
+## Sequence and context parallel training
+
+For a 16-card job, start with Ulysses size 4 and CP size 1:
+
+```bash
+# Append to the normal online or offline training command:
+--model.accelerator.ulysses_size 4 \
+--model.accelerator.cp_size 1
+```
+
+To test CP instead, use `--model.accelerator.ulysses_size 1` and
+`--model.accelerator.cp_size 4`. With other parallel dimensions at 1,
+`dp_size = world_size / (ulysses_size * cp_size)`; global batch size must be
+an integer multiple of `micro_batch_size * dp_size`. Embedding precompute
+normally uses SP1/CP1; existing caches can feed either training mode.
+SP/CP changes the compute/communication balance, so benchmark throughput and
+peak memory at the same global batch and resolution instead of assuming speedup.
+The four-process CPU/Gloo regression covers SP2/DP2, SP4, CP2/DP2 and CP4, including
+padding, adjacent reference images, weighted MSE, checkpointing and parameter updates.
+Two Ascend 950DT devices passed FSDP2 SP2 and CP2 tests in FP32 and BF16 with
+gradient checkpointing, comparing predictions, every parameter gradient and two
+SGD updates against a non-SP reference. FP32 retains strict elementwise checks.
+BF16 partitioning changes rounding: each parameter is checked within 2% relative
+L2 and a 2% peak plus 2e-5 absolute bound; observed maximum relative L2 was
+1.237%. FP32-master parameter updates retain the original strict elementwise
+check. The non-SP BF16 baseline also passed. These are tiny-model numerical
+tests; the released 7.115B smoke check below used SP1/CP1. Full-model SP/CP
+throughput and memory at training resolution have not been benchmarked.
 
 ## Performance profiling
 
