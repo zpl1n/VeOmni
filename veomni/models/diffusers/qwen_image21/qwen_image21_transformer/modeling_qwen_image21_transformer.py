@@ -1,8 +1,4 @@
-"""Qwen-Image 2.1 training with native checkpoint keys and block-causal attention.
-
-The backbone and its zero-centered norms are the pinned Diffusers implementation.
-Only attention dispatch, NPU rotary embeddings, and the training loss are adapted.
-"""
+"""Native Qwen-Image 2.1 DiT, following the DiffSynth-Studio single-stream model."""
 
 from __future__ import annotations
 
@@ -11,21 +7,33 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from math import prod
 from numbers import Integral
-from types import SimpleNamespace
 
 import torch
 import torch.nn.functional as F
-from diffusers import QwenImage21Transformer2DModel as _QwenImage21Transformer2DModel
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21Rope
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME as DIFFUSERS_SAFE_WEIGHTS_INDEX_NAME
+from diffusers.utils import SAFETENSORS_WEIGHTS_NAME as DIFFUSERS_SAFE_WEIGHTS_NAME
+from torch import nn
+from transformers import initialization
 from transformers.modeling_outputs import ModelOutput
+from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, cached_file
 
 from veomni.distributed.parallel_state import get_parallel_state
-from veomni.models.modeling_base import VeOmniPreTrainedModel as PreTrainedModel
+from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.ops import VeomniOp
 
-from .configuration_qwen_image21_transformer import QWEN_IMAGE21_INIT_SIGNATURE, QwenImage21Transformer2DConfig
-from .parallel import parallel_attention, parallel_forward
+from .configuration_qwen_image21_transformer import QWEN_IMAGE21_MODEL_FIELDS, QwenImage21Transformer2DConfig
+from .layers import (
+    QwenImage21OutputNorm,
+    QwenImage21RMSNorm,
+    QwenImage21Rope,
+    QwenImage21SwiGLU,
+    QwenImage21TextProjection,
+    QwenImage21TimeProjection,
+    apply_rotary,
+    select_modulation,
+)
+from .parallel import joint_attention, joint_forward
 
 
 _SUPPORTED_ATTENTION = frozenset({"eager", "sdpa", "veomni_sdpa"})
@@ -47,57 +55,29 @@ def eager_attention_forward(module, query, key, value, attention_mask, scaling=N
     return torch.matmul(weights, value).transpose(1, 2).contiguous(), None
 
 
-class QwenImage21AttentionKernelModule:
-    """Metadata view expected by the framework attention operators."""
+class QwenImage21Attention(nn.Module):
+    is_causal = False
+    num_key_value_groups = 1
 
-    def __init__(self, attn, implementation):
-        self.config = SimpleNamespace(_attn_implementation=implementation)
-        self.is_causal = False
-        self.num_key_value_groups = 1
-        self.training = attn.training
+    def __init__(self, config, dim):
+        super().__init__()
+        self.config = config
+        self.heads = config.num_attention_heads
+        self.to_q = nn.Linear(dim, dim, bias=False)
+        self.to_k = nn.Linear(dim, dim, bias=False)
+        self.to_v = nn.Linear(dim, dim, bias=False)
+        self.to_out = nn.ModuleList([nn.Linear(dim, dim, bias=False), nn.Dropout(0.0)])
+        self.norm_q = QwenImage21RMSNorm(config.attention_head_dim, config.eps)
+        self.norm_k = QwenImage21RMSNorm(config.attention_head_dim, config.eps)
+        self.attention = VeomniOp("attention", "standard", config.ops_config.attn_implementation)
 
-
-class QwenImage21DeviceRope(QwenImage21Rope):
-    """Compute Ascend's positional tables on CPU, transferring only real values."""
-
-    def forward(self, img_shapes, image_pad_mask, device):
-        if device.type != "npu":
-            return super().forward(img_shapes, image_pad_mask, device)
-        frequencies = super().forward(img_shapes, image_pad_mask.cpu(), torch.device("cpu"))
-        return torch.view_as_real(frequencies).contiguous().to(device)
-
-
-def apply_qwen_image21_rotary_emb(hidden_states, frequencies):
-    """Use real interleaved rotation on every accelerator, including Ascend."""
-    if frequencies.is_complex():
-        frequencies = torch.view_as_real(frequencies)
-    real, imaginary = hidden_states.float().unflatten(-1, (-1, 2)).unbind(-1)
-    cos, sin = frequencies.float().unbind(-1)
-    cos, sin = cos[None, :, None, :], sin[None, :, None, :]
-    return (
-        torch.stack((real * cos - imaginary * sin, real * sin + imaginary * cos), dim=-1)
-        .flatten(-2)
-        .to(hidden_states.dtype)
-    )
-
-
-class QwenImage21AttnProcessor:
-    """Exact segment attention: causal text, bidirectional individual image blocks."""
-
-    def __init__(self, config):
-        self.implementation = config.ops_config.attn_implementation
-        if self.implementation not in _SUPPORTED_ATTENTION:
-            raise ValueError(
-                f"Unsupported Qwen-Image 2.1 attention {self.implementation!r}; choose eager, sdpa, or veomni_sdpa."
-            )
-        self.veomni_attn = VeomniOp("attention", "standard", self.implementation)
-
-    def _attention(self, attn, query, key, value, mask):
+    @staticmethod
+    def _attend(attn, query, key, value, mask):
         if mask is not None and query.device.type == "npu" and mask.shape[-2] == 1:
-            # Ascend's fused SDPA needs an explicit query dimension in a dense mask.
+            # Ascend SDPA requires the query dimension to be explicit in a dense mask.
             mask = mask.expand(*mask.shape[:-2], query.shape[1], -1).contiguous()
-        return self.veomni_attn(
-            QwenImage21AttentionKernelModule(attn, self.implementation),
+        return attn.attention(
+            attn,
             query.transpose(1, 2),
             key.transpose(1, 2),
             value.transpose(1, 2),
@@ -107,56 +87,35 @@ class QwenImage21AttnProcessor:
             skip_ulysses=True,
         )[0]
 
-    def __call__(
-        self,
-        attn,
-        hidden_states,
-        attention_mask=None,
-        rotary_emb=None,
-        layer_cache=None,
-        kv_cache_mode=None,
-        cache_write_slice=None,
-        segments=None,
-        key_valid=None,
-    ):
-        query = attn.to_q(hidden_states).unflatten(-1, (attn.heads, -1))
-        key = attn.to_k(hidden_states).unflatten(-1, (attn.heads, -1))
-        value = attn.to_v(hidden_states).unflatten(-1, (attn.heads, -1))
-        query, key = attn.norm_q(query).to(value.dtype), attn.norm_k(key).to(value.dtype)
-        if rotary_emb is not None:
-            query = apply_qwen_image21_rotary_emb(query, rotary_emb)
-            key = apply_qwen_image21_rotary_emb(key, rotary_emb)
-        if layer_cache is not None:
-            if kv_cache_mode == "extract" and cache_write_slice is not None:
-                layer_cache.store(key[:, cache_write_slice].clone(), value[:, cache_write_slice].clone())
-            elif kv_cache_mode == "cached":
-                cached_key, cached_value = layer_cache.get()
-                key = torch.cat((cached_key, key), dim=1)
-                value = torch.cat((cached_value, value), dim=1)
+    def forward(self, hidden_states, rotary, segments, key_valid):
+        query = self.to_q(hidden_states).unflatten(-1, (self.heads, -1))
+        key = self.to_k(hidden_states).unflatten(-1, (self.heads, -1))
+        value = self.to_v(hidden_states).unflatten(-1, (self.heads, -1))
+        query = apply_rotary(self.norm_q(query).to(value.dtype), rotary)
+        key = apply_rotary(self.norm_k(key).to(value.dtype), rotary)
+        output = joint_attention(self._attend, self, query, key, value, segments, key_valid)
+        return self.to_out[1](self.to_out[0](output.flatten(2).to(query.dtype)))
 
-        if get_parallel_state().sp_enabled:
-            output = parallel_attention(self._attention, attn, query, key, value, segments, key_valid)
-        elif segments is None:
-            output = self._attention(attn, query, key, value, attention_mask)
-        else:
-            outputs = []
-            for start, end, is_text in segments:
-                mask = None
-                if is_text:
-                    # A text query sees earlier segments and the causal part of its own segment.
-                    query_positions = torch.arange(start, end, device=query.device)
-                    key_positions = torch.arange(end, device=query.device)
-                    mask = (key_positions[None, :] <= query_positions[:, None])[None, None]
-                if key_valid is not None:
-                    valid = key_valid[:, None, None, :end]
-                    mask = valid if mask is None else (mask & valid)
-                outputs.append(self._attention(attn, query[:, start:end], key[:, :end], value[:, :end], mask))
-            prefix_length = segments[-1][1] if segments else 0
-            target_mask = None if key_valid is None else key_valid[:, None, None, :]
-            outputs.append(self._attention(attn, query[:, prefix_length:], key, value, target_mask))
-            output = torch.cat(outputs, dim=1)
-        output = output.flatten(2, 3).to(query.dtype)
-        return attn.to_out[1](attn.to_out[0](output))
+
+class QwenImage21TransformerBlock(nn.Module):
+    def __init__(self, config, dim):
+        super().__init__()
+        self.img_norm1 = nn.LayerNorm(dim, eps=config.eps, elementwise_affine=False)
+        self.attn = QwenImage21Attention(config, dim)
+        self.img_norm2 = nn.LayerNorm(dim, eps=config.eps, elementwise_affine=False)
+        self.img_mlp = QwenImage21SwiGLU(dim, dim * config.mlp_ratio)
+
+    def forward(self, hidden_states, modulation, rotary, target_mask, segments, key_valid):
+        scale_attn, gate_attn, scale_mlp, gate_mlp = (
+            select_modulation(chunk, target_mask) for chunk in modulation.chunk(4, dim=-1)
+        )
+        attention_input = self.img_norm1(hidden_states) * (1 + scale_attn)
+        hidden_states = hidden_states + gate_attn.tanh() * self.attn(attention_input, rotary, segments, key_valid)
+        mlp_input = self.img_norm2(hidden_states) * (1 + scale_mlp)
+        hidden_states = hidden_states + gate_mlp.tanh() * self.img_mlp(mlp_input)
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clamp(-65504, 65504)
+        return hidden_states
 
 
 @dataclass
@@ -165,36 +124,45 @@ class QwenImage21ModelOutput(ModelOutput):
     predictions: list[torch.Tensor] | None = None
 
 
-class _QwenImage21InitShim(_QwenImage21Transformer2DModel):
-    def __init__(self, *args, **kwargs):
-        # HF's cooperative init must not build the full default 7B backbone.
-        torch.nn.Module.__init__(self)
-
-
-class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
+class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
     config_class = QwenImage21Transformer2DConfig
     supports_gradient_checkpointing = True
     _supports_sdpa = True
     _no_split_modules = ["QwenImage21TransformerBlock"]
 
     def __init__(self, config, **kwargs):
-        implementation = kwargs.pop("attn_implementation", None)
-        if implementation is not None:
-            config._attn_implementation = implementation
+        attention = kwargs.pop("attn_implementation", None)
+        if attention is not None:
+            config._attn_implementation = attention
         kwargs.pop("torch_dtype", None)
         kwargs.pop("trust_remote_code", None)
-        PreTrainedModel.__init__(self, config, **kwargs)
-        del self._internal_dict
-        construction_device = torch.get_default_device()
-        # Upstream creates complex positional tables while building the backbone.
-        # CPU construction avoids unsupported complex factories inside an NPU device context.
-        with torch.device("cpu"):
-            _QwenImage21Transformer2DModel.__init__(self, **config.to_diffuser_dict())
-        self.config = config
+        super().__init__(config, **kwargs)
         self.config.tie_word_embeddings = False
-        self._install_veomni_attention()
-        if construction_device.type != "cpu" and not any(parameter.is_meta for parameter in self.parameters()):
-            self.to(construction_device)
+        if config.num_attention_heads % get_parallel_state().ulysses_size:
+            raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
+
+        dim = config.num_attention_heads * config.attention_head_dim
+        self.pos_embed = QwenImage21Rope(config.axes_dims_rope)
+        self.time_text_embed = QwenImage21TimeProjection(dim)
+        self.txt_in = QwenImage21TextProjection(config.context_in_dim, dim, config.eps)
+        self.img_in = nn.Linear(config.in_channels, dim, bias=False)
+        self.modulation = nn.Sequential(nn.SiLU(), nn.Linear(dim, 4 * dim, bias=False))
+        self.transformer_blocks = nn.ModuleList(
+            QwenImage21TransformerBlock(config, dim) for _ in range(config.num_layers)
+        )
+        self.norm_out = QwenImage21OutputNorm(dim, config.eps)
+        self.proj_out = nn.Linear(dim, config.out_channels or config.in_channels, bias=False)
+        self.gradient_checkpointing = False
+        self.post_init()
+
+    def _init_weights(self, module):
+        if isinstance(module, QwenImage21RMSNorm):
+            if module.zero_centered:
+                initialization.zeros_(module.weight)
+            else:
+                initialization.ones_(module.weight)
+        else:
+            super()._init_weights(module)
 
     def _check_and_adjust_attn_implementation(self, attn_implementation, is_init_check=False, **kwargs):
         if attn_implementation not in _SUPPORTED_ATTENTION:
@@ -202,23 +170,6 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
                 f"Unsupported Qwen-Image 2.1 attention {attn_implementation!r}; choose eager, sdpa, or veomni_sdpa."
             )
         return attn_implementation
-
-    @property
-    def config(self):
-        return self._internal_dict
-
-    @config.setter
-    def config(self, value):
-        self._internal_dict = value
-
-    def _install_veomni_attention(self):
-        if self.config.num_attention_heads % get_parallel_state().ulysses_size:
-            raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
-        # Positional tables are non-parameter data; keep their initialization on CPU even under meta init.
-        with torch.device("cpu"):
-            self.pos_embed = QwenImage21DeviceRope(theta=10000, axes_dim=list(self.config.axes_dims_rope))
-        for block in self.transformer_blocks:
-            block.attn.set_processor(QwenImage21AttnProcessor(self.config))
 
     @staticmethod
     def _normalize_img_shapes(img_shapes):
@@ -259,27 +210,15 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
             raise ValueError("A tensor batch must share img_mask; use list batches for different layouts.")
         if hidden_states.shape[1] != sum(prod(shape) for shape in img_shapes[0]):
             raise ValueError("hidden_states must contain all condition-image latents followed by target latents.")
-        if get_parallel_state().sp_enabled:
-            output = parallel_forward(
-                self,
-                hidden_states.to(self.dtype),
-                encoder_hidden_states.to(self.dtype),
-                timestep,
-                img_shapes,
-                img_mask.bool(),
-                encoder_hidden_states_mask,
-            )
-        else:
-            output = _QwenImage21Transformer2DModel.forward(
-                self,
-                hidden_states=hidden_states.to(self.dtype),
-                encoder_hidden_states=encoder_hidden_states.to(self.dtype),
-                timestep=timestep,
-                img_shapes=img_shapes,
-                img_mask=img_mask.bool(),
-                encoder_hidden_states_mask=encoder_hidden_states_mask,
-                return_dict=False,
-            )[0][:, -target_tokens:]
+        output = joint_forward(
+            self,
+            hidden_states.to(self.dtype),
+            encoder_hidden_states.to(self.dtype),
+            timestep,
+            img_shapes,
+            img_mask.bool(),
+            encoder_hidden_states_mask,
+        )
         return Transformer2DModelOutput(sample=output) if return_dict else (output,)
 
     def forward(
@@ -335,45 +274,69 @@ class QwenImage21Transformer2DModel(PreTrainedModel, _QwenImage21InitShim):
         return QwenImage21ModelOutput(loss={"mse_loss": torch.cat(losses).mean()}, predictions=predictions)
 
     def save_pretrained(self, path, **kwargs):
-        original_config = self.config
-        self.config = {**self.config.to_diffuser_dict(), "ops_implementation": dict(self.config.ops_implementation)}
-        try:
-            _QwenImage21Transformer2DModel.save_pretrained(self, path, **kwargs)
-        finally:
-            self.config = original_config
+        # Reuse the Diffusers serializer for standalone export. A meta shell
+        # shares the live tensors and preserves the published file layout.
+        from diffusers import QwenImage21Transformer2DModel as DiffusersTransformer
+
+        with torch.device("meta"):
+            export = DiffusersTransformer(**self.config.to_diffuser_dict())
+        export.register_to_config(ops_implementation=dict(self.config.ops_implementation))
+        export.load_state_dict(self.state_dict(), strict=True, assign=True)
+        return export.save_pretrained(path, **kwargs)
 
     @classmethod
-    def from_pretrained(cls, path, **kwargs):
+    def from_pretrained(cls, path, *args, **kwargs):
+        hub_kwargs = {
+            key: kwargs[key]
+            for key in ("cache_dir", "revision", "token", "local_files_only", "subfolder")
+            if key in kwargs
+        }
+        config = kwargs.pop("config", None)
+        overrides = {key: kwargs.pop(key) for key in QWEN_IMAGE21_MODEL_FIELDS if key in kwargs}
         ops = kwargs.pop("ops_implementation", None)
         attention = kwargs.pop("attn_implementation", None)
-        config = kwargs.pop("config", None)
-        overrides = {key: kwargs[key] for key in QWEN_IMAGE21_INIT_SIGNATURE.parameters if key in kwargs}
-        if isinstance(config, cls.config_class):
+        config_kwargs = {"ops_implementation": ops, "attn_implementation": attention, **overrides}
+        if config is None:
+            config = cls.config_class.from_pretrained(path, **hub_kwargs, **config_kwargs)
+        elif isinstance(config, Mapping):
+            config = cls.config_class.from_dict(dict(config), **config_kwargs)
+        elif isinstance(config, cls.config_class):
             config = copy.deepcopy(config)
-            for key, value in overrides.items():
-                setattr(config, key, value)
+            config.update(overrides)
             config._apply_ops_overrides(ops_implementation=ops, attn_implementation=attention)
-        elif config is None or isinstance(config, Mapping):
-            config_kwargs = {"ops_implementation": ops, "attn_implementation": attention, **overrides}
-            if config is None:
-                hub_kwargs = {
-                    key: kwargs[key]
-                    for key in ("cache_dir", "revision", "token", "local_files_only", "subfolder")
-                    if key in kwargs
-                }
-                config = cls.config_class.from_pretrained(path, **hub_kwargs, **config_kwargs)
-            else:
-                config = cls.config_class.from_dict(dict(config), **config_kwargs)
         else:
             raise TypeError("config must be a QwenImage21Transformer2DConfig or a mapping.")
-        if config.ops_config.attn_implementation not in _SUPPORTED_ATTENTION:
-            raise ValueError(
-                f"Unsupported Qwen-Image 2.1 attention {config.ops_config.attn_implementation!r}; choose eager, sdpa, or veomni_sdpa."
-            )
-        loaded = _QwenImage21Transformer2DModel.from_pretrained(path, **{**config.to_diffuser_dict(), **kwargs})
-        model = loaded[0] if isinstance(loaded, tuple) else loaded
-        model.__class__ = cls
-        model.config = config
-        model.config.tie_word_embeddings = False
-        model._install_veomni_attention()
-        return loaded
+
+        if path is None or "state_dict" in kwargs:
+            return super().from_pretrained(path, *args, config=config, **kwargs)
+
+        variant = kwargs.get("variant")
+        lookup_kwargs = {"_raise_exceptions_for_missing_entries": False, **hub_kwargs}
+        if kwargs.get("use_safetensors") is not False:
+            for filename in (SAFE_WEIGHTS_NAME, SAFE_WEIGHTS_INDEX_NAME):
+                if variant is not None:
+                    stem, extension = filename.rsplit(".", 1)
+                    filename = f"{stem}.{variant}.{extension}"
+                if cached_file(path, filename, **lookup_kwargs) is not None:
+                    return super().from_pretrained(path, *args, config=config, **kwargs)
+            if variant is None:
+                for filename in (DIFFUSERS_SAFE_WEIGHTS_NAME, DIFFUSERS_SAFE_WEIGHTS_INDEX_NAME):
+                    if cached_file(path, filename, **lookup_kwargs) is not None:
+                        config.transformers_weights = filename
+                        return super().from_pretrained(path, *args, config=config, **kwargs)
+
+        # Legacy Diffusers variants and binary weights use Diffusers' resolver.
+        # Standard safetensors above stream directly into the native model.
+        from diffusers import QwenImage21Transformer2DModel as DiffusersTransformer
+
+        dispatch = {
+            key: kwargs.pop(key)
+            for key in ("device_map", "max_memory", "offload_folder", "offload_buffers")
+            if key in kwargs
+        }
+        loaded = DiffusersTransformer.from_pretrained(path, **config.to_diffuser_dict(), **kwargs)
+        source = loaded[0] if isinstance(loaded, tuple) else loaded
+        model = super().from_pretrained(
+            None, *args, config=config, state_dict=source.state_dict(), dtype=source.dtype, **dispatch
+        )
+        return (model, loaded[1]) if isinstance(loaded, tuple) else model

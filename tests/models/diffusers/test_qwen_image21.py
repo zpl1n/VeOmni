@@ -150,19 +150,31 @@ def test_ragged_batch_averages_target_losses_and_gradients():
             torch.testing.assert_close(parameter.grad, reference_parameter.grad, msg=name)
 
 
-def test_checkpoint_roundtrip_preserves_upstream_names_and_attention(tmp_path):
+@pytest.mark.parametrize(
+    "save_options, load_options",
+    [
+        ({"max_shard_size": "8KB"}, {}),
+        ({"variant": "ema"}, {"variant": "ema"}),
+        ({"safe_serialization": False}, {"use_safetensors": False}),
+    ],
+    ids=["sharded", "variant", "legacy-bin"],
+)
+def test_checkpoint_roundtrip_preserves_upstream_names_and_attention(tmp_path, save_options, load_options):
     torch.manual_seed(7)
     config = tiny_config()
     official = OfficialTransformer(**config.to_diffuser_dict())
     model = QwenImage21Transformer2DModel(config).eval()
+    torch.testing.assert_close(model.txt_in.text_norm.weight, official.txt_in.text_norm.weight, atol=0, rtol=0)
     model.load_state_dict(official.state_dict(), strict=True)
-    model.save_pretrained(tmp_path)
-    reloaded = QwenImage21Transformer2DModel.from_pretrained(tmp_path, ops_implementation=tiny_ops()).eval()
+    model.save_pretrained(tmp_path, **save_options)
+    reloaded = QwenImage21Transformer2DModel.from_pretrained(tmp_path, ops_implementation=tiny_ops(), **load_options)
+    diffusers_reload = OfficialTransformer.from_pretrained(tmp_path, **load_options).eval()
     assert reloaded.config.model_type == "QwenImage21Transformer2DModel"
     assert reloaded.config.condition_model_type == "QwenImage21ConditionModel"
     assert reloaded.state_dict().keys() == official.state_dict().keys()
     for key, expected in official.state_dict().items():
         torch.testing.assert_close(reloaded.state_dict()[key], expected, atol=0, rtol=0)
+        torch.testing.assert_close(diffusers_reload.state_dict()[key], expected, atol=0, rtol=0)
     sample = sample_inputs(True, requires_grad=False)
     with torch.no_grad():
         expected = model(**sample, return_dict=False)[0]

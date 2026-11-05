@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 from datasets import Dataset
-from diffusers import AutoencoderKLQwenImage21, FlowMatchEulerDiscreteScheduler
+from diffusers import AutoencoderKLQwenImage21, FlowMatchEulerDiscreteScheduler, QwenImage21Pipeline
 from PIL import Image
 from tokenizers.pre_tokenizers import ByteLevel
 from transformers import (
@@ -173,12 +173,13 @@ def snapshot(tmp_path_factory, cpu_rank):
     return root
 
 
-def condition_model(snapshot, *, edit=False, offline=False):
+def condition_model(snapshot, *, edit=False, offline=False, recipe="diffusers", steps=16):
     config = QwenImage21ConditionModelConfig(
         base_model_path=str(snapshot),
         height=32,
         width=32,
-        num_train_timesteps=16,
+        num_train_timesteps=steps,
+        training_recipe=recipe,
         enable_edit=edit,
         seed=77,
         text_encoder_dtype="float32",
@@ -248,6 +249,21 @@ def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit):
     assert_tree_equal(online.rng_state_dict(), start_rng)
     assert encoded["latents"][0].shape == (1, 128, 1, 2, 2)
     assert int(encoded["img_mask"][0].sum()) == int(edit)
+    # Existing caches were generated with the upstream pipeline's prompt encoder.
+    reference_pipeline = QwenImage21Pipeline(
+        scheduler=FlowMatchEulerDiscreteScheduler(),
+        vae=online.vae,
+        text_encoder=online.text_encoder,
+        processor=online.processor,
+        transformer=None,
+    )
+    references = [online._prepare_image(image, reference=True) for image in batch["images"][0][:-1]]
+    with torch.no_grad():
+        reference_prompt = reference_pipeline.encode_prompt("a red square", image=references or None, device="cpu")
+    assert_tree_equal(
+        [encoded[key][0] for key in ("encoder_hidden_states", "encoder_hidden_states_mask", "img_mask")],
+        reference_prompt,
+    )
     # Alpha reaches the VAE: changing only transparency must change its posterior.
     opaque_batch = {**batch, "images": [[image.copy() for image in batch["images"][0]]]}
     opaque_batch["images"][0][-1].putalpha(255)
@@ -311,11 +327,10 @@ class _Runtime:
 @pytest.mark.parametrize("recipe", ["diffusers", "diffsynth"])
 def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit, offline, recipe):
     batch = raw_batch(tmp_path, edit)
-    condition = condition_model(snapshot, edit=edit)
+    condition = condition_model(snapshot, edit=edit, recipe=recipe)
     if offline:
         batch = condition.get_condition(**batch)
-        condition = condition_model(snapshot, edit=edit, offline=True)
-    condition.config.training_recipe = recipe
+        condition = condition_model(snapshot, edit=edit, offline=True, recipe=recipe)
     config = tiny_config()
     config.in_channels = config.out_channels = 64
     model = QwenImage21Transformer2DModel(config).train()
@@ -435,10 +450,9 @@ def test_reference_resize_matches_processor_grid(snapshot, resolution, reference
 
 @pytest.mark.parametrize("steps", [16, 1000])
 def test_diffsynth_training_schedule_and_weight(snapshot, steps):
-    model = condition_model(snapshot, offline=True)
-    model.config.training_recipe = "diffsynth"
-    model.config.num_train_timesteps = steps
-    model._prepare_timesteps(4096)
+    model = condition_model(snapshot, offline=True, recipe="diffsynth", steps=steps)
+    schedule = model.flow_match
+    schedule.prepare_schedule(4096, torch.device("cpu"))
     # Independent reference equations from DiffSynth FlowMatchScheduler.
     import math
 
@@ -452,15 +466,14 @@ def test_diffsynth_training_schedule_and_weight(snapshot, steps):
     if steps != 1000:
         weights *= steps / 1000
         weights += weights[1].clone()
-    torch.testing.assert_close(model.scheduler.sigmas, reference, atol=0, rtol=0)
-    torch.testing.assert_close(model._training_weights, weights, atol=0, rtol=0)
-    model._prepare_timesteps(16384)
-    torch.testing.assert_close(model.scheduler.sigmas, reference, atol=0, rtol=0)
+    torch.testing.assert_close(schedule.sigmas, reference, atol=0, rtol=0)
+    torch.testing.assert_close(schedule.loss_weights, weights, atol=0, rtol=0)
+    schedule.prepare_schedule(16384, torch.device("cpu"))
+    torch.testing.assert_close(schedule.sigmas, reference, atol=0, rtol=0)
 
 
 def test_diffsynth_weight_flows_from_condition_to_training(snapshot):
-    condition = condition_model(snapshot)
-    condition.config.training_recipe = "diffsynth"
+    condition = condition_model(snapshot, recipe="diffsynth")
     encoded = condition.get_condition(inputs=["a boat"], images=[[Image.new("RGBA", (32, 32))]])
     inputs = condition.process_condition(**encoded)
     model = QwenImage21Transformer2DModel(tiny_config())

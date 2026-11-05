@@ -1,14 +1,23 @@
 """Configuration for the official Qwen-Image 2.1 transformer."""
 
-import inspect
-
 import diffusers
-from diffusers import QwenImage21Transformer2DModel
 
 from veomni.models.configuration_base import VeOmniPretrainedConfig
 
 
-QWEN_IMAGE21_INIT_SIGNATURE = inspect.signature(QwenImage21Transformer2DModel.__init__)
+QWEN_IMAGE21_MODEL_FIELDS = (
+    "patch_size",
+    "in_channels",
+    "out_channels",
+    "num_layers",
+    "attention_head_dim",
+    "num_attention_heads",
+    "context_in_dim",
+    "mlp_ratio",
+    "axes_dims_rope",
+    "eps",
+    "causal_condition",
+)
 
 
 class QwenImage21Transformer2DConfig(VeOmniPretrainedConfig):
@@ -52,7 +61,7 @@ class QwenImage21Transformer2DConfig(VeOmniPretrainedConfig):
             raise ValueError("axes_dims_rope must sum to attention_head_dim.")
 
     def to_diffuser_dict(self):
-        return {key: getattr(self, key) for key in QWEN_IMAGE21_INIT_SIGNATURE.parameters if key != "self"}
+        return {key: getattr(self, key) for key in QWEN_IMAGE21_MODEL_FIELDS}
 
     def to_dict(self):
         result = super().to_dict()

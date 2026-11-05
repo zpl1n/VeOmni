@@ -4,9 +4,8 @@ import math
 from typing import Any
 
 import torch
-from diffusers import AutoencoderKLQwenImage21, FlowMatchEulerDiscreteScheduler, QwenImage21Pipeline
-from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
-from diffusers.pipelines.qwenimage21.pipeline_qwenimage21 import calculate_dimensions
+from diffusers import AutoencoderKLQwenImage21
+from diffusers.image_processor import VaeImageProcessor
 from PIL import Image, ImageOps
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize
@@ -16,6 +15,15 @@ from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.utils.device import get_device_type
 
 from .configuration_qwen_image21_condition import QwenImage21ConditionModelConfig
+from .flow_matching import QwenImage21FlowMatch
+
+
+_SYSTEM_PROMPT = "Comprehend and analyze the provided prompt."
+_PROMPT_TEMPLATE = (
+    f"<|im_start|>system\n{_SYSTEM_PROMPT}<|im_end|>\n"
+    "<|im_start|>user\n{references}{prompt}<|im_end|>\n"
+    "<|im_start|>assistant\n"
+)
 
 
 class QwenImage21ConditionModel(VeOmniPreTrainedModel):
@@ -32,12 +40,10 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         self.processor = None
         self.text_encoder = None
         self.vae = None
-        self.pipeline = None
         self.generator = torch.Generator(device=get_device_type())
         self.generator.manual_seed((config.seed or 0) + get_parallel_state().dp_rank)
-        self._timesteps_image_seq_len = None
         base = config.base_model_path
-        self.scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(base, subfolder=config.scheduler_subfolder)
+        self.flow_match = QwenImage21FlowMatch(config)
         self.vae_config = AutoencoderKLQwenImage21.load_config(base, subfolder=config.vae_subfolder)
         if self.vae_config.get("scale_factor_spatial", 16) != 16 or self.vae_config["z_dim"] != 64:
             raise ValueError("Qwen-Image 2.1 requires a 64-channel VAE with spatial compression factor 16.")
@@ -55,15 +61,11 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
             base, subfolder=config.vae_subfolder, torch_dtype=getattr(torch, config.vae_dtype)
         ).eval()
         self.requires_grad_(False)
-        # Reuse the checkpoint's exact prompt, pre-final-norm features and white-alpha
-        # compositing. The inference denoising loop (__call__) is never invoked.
-        self.pipeline = QwenImage21Pipeline(
-            scheduler=self.scheduler,
-            vae=self.vae,
-            text_encoder=self.text_encoder,
-            processor=self.processor,
-            transformer=None,
-        )
+        self.vae_image_processor = VaeImageProcessor(vae_scale_factor=16, vae_latent_channels=64)
+        system_message = [{"role": "system", "content": [{"type": "text", "text": _SYSTEM_PROMPT}]}]
+        system_tokens = self.processor.apply_chat_template(system_message, tokenize=True, return_dict=False)
+        self._system_tokens = len(system_tokens[0])
+        self._image_token_id = self.processor.tokenizer.encode("<|image_pad|>")[0]
 
     @staticmethod
     def _as_list(value, length=None):
@@ -122,7 +124,10 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
             raise ValueError("Qwen-Image 2.1 expects PIL images loaded with alpha preserved.")
         image = image.convert("RGBA")
         if reference:
-            width, height, _ = calculate_dimensions(self.config.height * self.config.width, image.width / image.height)
+            ratio = image.width / image.height
+            width = math.sqrt(self.config.height * self.config.width * ratio)
+            height = round(width / ratio / 32) * 32
+            width = round(width / 32) * 32
             if min(width, height) <= 0:
                 raise ValueError("Reference aspect ratio is too extreme for the configured image resolution.")
             processor = self.processor.image_processor
@@ -141,16 +146,48 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
             width, height = self.config.width, self.config.height
             if self.config.image_resize_mode == "center_crop":
                 return ImageOps.fit(image, (width, height), method=Image.Resampling.LANCZOS)
-        return self.pipeline.image_processor.resize(image, height=height, width=width)
+        return self.vae_image_processor.resize(image, height=height, width=width)
+
+    def _encode_prompt(self, prompt, references):
+        """Encode one interleaved prompt using the last decoder block's pre-norm states."""
+        image_slots = " ".join(
+            f"<image{i}><|vision_start|><|image_pad|><|vision_end|>" for i in range(1, len(references) + 1)
+        )
+        text = _PROMPT_TEMPLATE.format(references=image_slots, prompt=prompt or " ")
+        processor_kwargs = {"text": [text], "padding": True, "padding_side": "left", "return_tensors": "pt"}
+        if references:
+            rgb_references = []
+            for image in references:
+                white = Image.new("RGB", image.size, (255, 255, 255))
+                white.paste(image, mask=image.getchannel("A"))
+                rgb_references.append(white)
+            processor_kwargs["images"] = rgb_references
+        model_inputs = self.processor(**processor_kwargs).to(self.text_encoder.device)
+
+        # The checkpoint consumes pre-norm features. Capture them directly from
+        # Qwen3-VL's backbone and skip the language modeling head and KV cache.
+        backbone = self.text_encoder.model
+        hidden_states = None
+
+        def capture_pre_norm(_module, args):
+            nonlocal hidden_states
+            hidden_states = args[0]
+
+        with backbone.language_model.norm.register_forward_pre_hook(capture_pre_norm):
+            backbone(**model_inputs, use_cache=False)
+        positions = model_inputs.attention_mask[0].nonzero(as_tuple=True)[0][self._system_tokens :]
+        embeddings = hidden_states.index_select(1, positions)
+        image_mask = model_inputs.input_ids.index_select(1, positions).eq(self._image_token_id)
+        return embeddings, image_mask
 
     def _encode_image(self, image):
-        pixels = self.pipeline.image_processor.preprocess(image, height=image.height, width=image.width).unsqueeze(2)
+        pixels = self.vae_image_processor.preprocess(image, height=image.height, width=image.width).unsqueeze(2)
         posterior = self.vae.encode(pixels.to(device=self.vae.device, dtype=self.vae.dtype)).latent_dist
         return posterior.parameters, (1, posterior.parameters.shape[-2], posterior.parameters.shape[-1])
 
     @torch.no_grad()
     def get_condition(self, inputs, images, outputs=None, **kwargs) -> dict[str, Any]:
-        if self.pipeline is None:
+        if self.vae is None:
             raise RuntimeError("Offline training cannot encode raw inputs; run offline_embedding first.")
         condition = {
             key: []
@@ -168,11 +205,7 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         for prompt, references, target in self._split_image_inputs(inputs, outputs, images):
             references = [self._prepare_image(image, reference=True) for image in references]
             target = self._prepare_image(target)
-            embeddings, mask, image_mask = self.pipeline.encode_prompt(
-                prompt=prompt,
-                image=references or None,
-                device=self.text_encoder.device,
-            )
+            embeddings, image_mask = self._encode_prompt(prompt, references)
             if self.config.max_sequence_length is not None and embeddings.shape[1] > self.config.max_sequence_length:
                 raise ValueError(
                     f"Encoded prompt length {embeddings.shape[1]} exceeds max_sequence_length="
@@ -186,7 +219,9 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 reference_shapes.append(shape)
             condition["latents"].append(target_params)
             condition["encoder_hidden_states"].append(embeddings)
-            condition["encoder_hidden_states_mask"].append(mask)
+            # Each encoder call removes padding from one sample. Retain the
+            # cache field for compatibility with previously cached batches.
+            condition["encoder_hidden_states_mask"].append(None)
             condition["img_mask"].append(image_mask)
             condition["img_shapes"].append([target_shape])
             condition["edit_latents"].append(reference_params)
@@ -200,42 +235,11 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
             raise ValueError("Latent height and width must be even to match Qwen3-VL image slots.")
         # The official reference-image encoding uses the posterior mode. Use the
         # same deterministic convention for targets; randomness belongs to FM noise/t.
-        latent = DiagonalGaussianDistribution(parameters).mode().to(self.generator.device)
+        latent = parameters[:, :64].to(self.generator.device)
         mean = torch.as_tensor(self.vae_config["latents_mean"], device=latent.device, dtype=latent.dtype)
         std = torch.as_tensor(self.vae_config["latents_std"], device=latent.device, dtype=latent.dtype)
         latent = (latent - mean.view(1, 64, 1, 1, 1)) / std.view(1, 64, 1, 1, 1)
         return latent.flatten(2).transpose(1, 2), (1, parameters.shape[-2], parameters.shape[-1])
-
-    def _prepare_timesteps(self, image_seq_len):
-        if self._timesteps_image_seq_len == image_seq_len:
-            return
-        if self.config.training_recipe == "diffsynth":
-            # DiffSynth FlowMatchScheduler Qwen-Image training defaults (CPU FP32).
-            steps = self.config.num_train_timesteps
-            sigmas = torch.linspace(1.0, 0.0, steps + 1)[:-1]
-            sigmas = math.exp(0.8) / (math.exp(0.8) + (1 / sigmas - 1))
-            one_minus = 1 - sigmas
-            sigmas = 1 - one_minus / (one_minus[-1] / (1 - 0.02))
-            timesteps = sigmas * 1000
-            curve = torch.exp(-2 * ((timesteps - 500) / 1000) ** 2)
-            curve = curve - curve.min()
-            weights = curve * (1000 / curve.sum())
-            if steps != 1000:
-                weights = weights * (steps / 1000)
-                weights = weights + weights[1]
-            self.scheduler.timesteps = timesteps.to(self.generator.device)
-            self.scheduler.sigmas = sigmas.to(self.generator.device)
-            self._training_weights = weights.to(self.generator.device)
-            self._timesteps_image_seq_len = image_seq_len
-            return
-        cfg = self.scheduler.config
-        base_len, max_len = cfg.get("base_image_seq_len", 256), cfg.get("max_image_seq_len", 4096)
-        if base_len == max_len:
-            raise ValueError("Scheduler base_image_seq_len and max_image_seq_len must differ.")
-        base_shift, max_shift = cfg.get("base_shift", 0.5), cfg.get("max_shift", 1.15)
-        mu = base_shift + (image_seq_len - base_len) * (max_shift - base_shift) / (max_len - base_len)
-        self.scheduler.set_timesteps(self.config.num_train_timesteps, device=self.generator.device, mu=mu)
-        self._timesteps_image_seq_len = image_seq_len
 
     @torch.no_grad()
     def process_condition(
@@ -295,27 +299,14 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 packed_refs.append(packed)
             if int(image_mask.bool().sum()) * 4 != sum(ref.shape[1] for ref in packed_refs):
                 raise ValueError("Qwen3-VL reference image slots do not match the VAE reference latent count.")
-            self._prepare_timesteps(target.shape[1])
-            noise = torch.randn(target.shape, dtype=target.dtype, device=target.device, generator=self.generator)
-            indices = torch.randint(
-                len(self.scheduler.timesteps),
-                (1,),
-                device=target.device,
-                generator=self.generator,
-            )
-            timestep = self.scheduler.timesteps[indices]
-            if self.config.training_recipe == "diffsynth":
-                result["loss_weight"].append(self._training_weights[indices])
-            sigma = self.scheduler.sigmas[indices].to(target.dtype).view(1, 1, 1)
-            noisy_target = (1 - sigma) * target + sigma * noise
+            noisy_target, velocity, timestep, weight = self.flow_match.sample(target, self.generator)
+            if weight is not None:
+                result["loss_weight"].append(weight)
             image_mask = image_mask.to(device=target.device, dtype=torch.bool)
             result["hidden_states"].append(torch.cat([*packed_refs, noisy_target], dim=1))
-            result["training_target"].append(noise - target)
+            result["training_target"].append(velocity)
             result["latents"].append(target)
-            time_scale = (
-                1000 if self.config.training_recipe == "diffsynth" else self.scheduler.config.num_train_timesteps
-            )
-            result["timestep"].append(timestep / time_scale)
+            result["timestep"].append(timestep)
             result["encoder_hidden_states"].append(context.to(target.device))
             result["encoder_hidden_states_mask"].append(
                 None if context_mask is None else context_mask.to(target.device)

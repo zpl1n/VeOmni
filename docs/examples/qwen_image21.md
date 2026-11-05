@@ -6,6 +6,13 @@ text-to-image and image-editing supervision, online encoding, and cached offline
 training through `tasks/train_dit.py`. It is not a reproduction of an unpublished
 Qwen training recipe, and does not implement reinforcement learning or Turbo distillation.
 
+The native VeOmni DiT follows the
+[DiffSynth-Studio Qwen-Image 2.1 architecture](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/models/qwen_image_21_dit.py).
+Its single-stream blocks share one timestep modulation projection, and serial,
+Ulysses and CP execution use the same joint-sequence forward. Frozen condition
+encoding calls Qwen3-VL and the RGBA VAE directly, following the stages in the
+[DiffSynth-Studio pipeline](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/pipelines/qwen_image_21.py).
+
 ## Environment and weights
 
 Use the project's locked environment: Diffusers 0.41.0 and Transformers 5.16.1.
@@ -60,8 +67,9 @@ in the embedding and offline stages too. Text-to-image uses `Qwen-Image-2.1`
 and `enable_edit: false`. A run uses one of these two data layouts.
 
 The `qwen_image21_online` transform uses its own RGBA loader to preserve alpha from files and encoded image
-bytes. It feeds RGBA to the VAE; the official prompt encoder composites reference
-images over white for Qwen3-VL. Reference geometry also follows the image processor's
+bytes. It feeds RGBA to the VAE. The prompt encoder composites reference images
+over white for Qwen3-VL and reads the hidden states before final normalization.
+Reference geometry also follows the image processor's
 pixel limits and patch-grid rounding before either encoder runs. The released processor
 requires at least 65,536 reference pixels (256 x 256 for a square), so small training
 targets can have larger reference grids. The generic `dit_online` transform retains its RGB
@@ -98,13 +106,14 @@ global batch size to match the chosen data-parallel launch size.
 
 Then launch `configs/dit/qwen_image21_offline.yaml`, supplying the same three
 model-path overrides and `--data.train_path output/qwen_image21_embedding`.
-This stage reads only the scheduler and VAE configuration from the condition
-snapshot; it does not load the encoder or VAE weights. Each step samples new
-noise and a timestep from the cached data. Noise-generator state is included in
-the framework's checkpoint extra state for resumption.
+With `training_recipe: diffsynth`, this stage reads the VAE configuration for
+latent normalization. The `diffusers` recipe also reads the scheduler config.
+Both recipes sample new noise and a timestep each step. Noise-generator state
+is included in the framework's checkpoint extra state for resumption.
 
 The cache stores raw VAE posterior parameters, pre-final-norm Qwen3-VL features,
-attention masks and reference-image layouts. Regenerate it after changing the
+attention masks and reference-image layouts. Existing Qwen-Image 2.1 Parquet
+caches work with the native DiT. Regenerate the cache after changing the
 images, prompts, resolution, crop policy, encoder weights or processor. Keep
 `enable_edit` consistent across both stages. Parquet is a binary format; do not
 edit the files as text. Only load caches you produced or trust: the existing
@@ -168,8 +177,8 @@ Two Ascend 950DT devices passed FSDP2 SP2 and CP2 tests in FP32 and BF16 with
 gradient checkpointing, comparing predictions, every parameter gradient and two
 SGD updates against a non-SP reference. FP32 retains strict elementwise checks.
 BF16 partitioning changes rounding: each parameter is checked within 2% relative
-L2 and a 2% peak plus 2e-5 absolute bound; observed maximum relative L2 was
-1.237%. FP32-master parameter updates retain the original strict elementwise
+L2 and a 2% peak plus 2e-5 absolute bound. The native DiT's observed maximum
+relative L2 was 1.219%. FP32-master parameter updates retain the strict elementwise
 check. The non-SP BF16 baseline also passed. These are tiny-model numerical
 tests; the released 7.115B smoke check below used SP1/CP1. Full-model SP/CP
 throughput and memory at training resolution have not been benchmarked.
@@ -203,13 +212,13 @@ case requires two devices and compares single-device execution and two-rank
 FSDP2 over two optimizer steps. Tiny-model parity establishes the integration's
 numerical contract; it is not a full-resolution quality or throughput benchmark.
 
-The integration has also been checked with the released 7.115B transformer on
-two Ascend 950DT devices (torch/torch-npu 2.10.0, Diffusers 0.41.0,
-Transformers 5.16.1): all 297 checkpoint tensor names/shapes matched, real
-Qwen3-VL/VAE encoding passed for generation and editing, and a 64 x 64 target
-completed one AdamW update with FSDP2, BF16 computation and gradient
-checkpointing. This low-resolution smoke check does not establish image quality,
-full-resolution throughput or memory requirements.
+The native 7.115B DiT matches all 297 tensor names and shapes in the released
+checkpoint. The earlier Diffusers-backed implementation also ran a 64 x 64
+full-model smoke check on two Ascend 950DT devices (torch/torch-npu 2.10.0,
+Diffusers 0.41.0, Transformers 5.16.1), including real Qwen3-VL/VAE encoding
+for generation and editing and one AdamW update with FSDP2, BF16 computation,
+and gradient checkpointing. The native model's full-resolution throughput,
+memory requirements, and image quality have yet to be measured.
 
 If Ascend reports `EI0020` because its default HCCL port is occupied, set
 `HCCL_NPU_SOCKET_PORT_RANGE=auto` in the launch environment, as described in the

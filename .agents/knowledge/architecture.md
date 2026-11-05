@@ -90,10 +90,11 @@ veomni/
 
 ### Qwen-Image 2.1 diffusion training
 
-`models/diffusers/qwen_image21/` wraps the pinned Diffusers single-stream DiT,
-with model-local block-causal attention and real-valued NPU rotary embeddings.
-Its `qwen_image21_condition/` package follows the Qwen-Image condition naming and uses Qwen3-VL and the RGBA VAE for online encoding or
-cached offline training. `qwen_image21_online` preserves image alpha; existing
+`models/diffusers/qwen_image21/` implements the DiffSynth-Studio single-stream
+DiT with official checkpoint keys, model-local block-causal attention, and
+real-valued NPU rotary embeddings. Its `qwen_image21_condition/` package directly
+encodes inputs with Qwen3-VL and the RGBA VAE and prepares Flow Matching inputs
+for both online and cached offline training. `qwen_image21_online` preserves image alpha; existing
 image transforms keep their RGB default. The standard `DiTTrainer` handles all
 three stages without model-specific trainer branches. FSDP2 supports separate
 Ulysses SP (all-to-all) or CP (local queries with all-gathered K/V); combined
