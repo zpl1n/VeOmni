@@ -15,15 +15,32 @@ from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.utils.device import get_device_type
 
 from .configuration_qwen_image21_condition import QwenImage21ConditionModelConfig
-from .flow_matching import QwenImage21FlowMatch
 
 
+_TRAINING_TIME_SCALE = 1000
 _SYSTEM_PROMPT = "Comprehend and analyze the provided prompt."
 _PROMPT_TEMPLATE = (
     f"<|im_start|>system\n{_SYSTEM_PROMPT}<|im_end|>\n"
     "<|im_start|>user\n{references}{prompt}<|im_end|>\n"
     "<|im_start|>assistant\n"
 )
+
+
+def _build_training_schedule(steps, device):
+    """Build the DiffSynth Qwen-Image Flow Matching grid in FP32."""
+    sigmas = torch.linspace(1.0, 0.0, steps + 1, dtype=torch.float32, device="cpu")[:-1]
+    shift = math.exp(0.8)
+    sigmas = shift / (shift + (1 / sigmas - 1))
+    one_minus_sigma = 1 - sigmas
+    sigmas = 1 - one_minus_sigma / (one_minus_sigma[-1] / (1 - 0.02))
+    timesteps = sigmas * _TRAINING_TIME_SCALE
+    curve = torch.exp(-2 * ((timesteps - _TRAINING_TIME_SCALE / 2) / _TRAINING_TIME_SCALE) ** 2)
+    curve = curve - curve.min()
+    weights = curve * (_TRAINING_TIME_SCALE / curve.sum())
+    if steps != _TRAINING_TIME_SCALE:
+        weights = weights * (steps / _TRAINING_TIME_SCALE)
+        weights = weights + weights[1]
+    return sigmas.to(device), timesteps.to(device), weights.to(device)
 
 
 class QwenImage21ConditionModel(VeOmniPreTrainedModel):
@@ -43,11 +60,13 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         self.generator = torch.Generator(device=get_device_type())
         self.generator.manual_seed((config.seed or 0) + get_parallel_state().dp_rank)
         base = config.base_model_path
-        self.flow_match = QwenImage21FlowMatch(config)
+        self._sigmas, self._timesteps, self._loss_weights = _build_training_schedule(
+            config.num_train_timesteps, self.generator.device
+        )
         self.vae_config = AutoencoderKLQwenImage21.load_config(base, subfolder=config.vae_subfolder)
         if self.vae_config.get("scale_factor_spatial", 16) != 16 or self.vae_config["z_dim"] != 64:
             raise ValueError("Qwen-Image 2.1 requires a 64-channel VAE with spatial compression factor 16.")
-        # Offline training loads only scheduler/normalization metadata, never the encoders' weights.
+        # Offline training only needs the VAE normalization metadata.
         if meta_init:
             return
         self.processor = Qwen3VLProcessor.from_pretrained(base, subfolder=config.processor_subfolder)
@@ -241,6 +260,14 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         latent = (latent - mean.view(1, 64, 1, 1, 1)) / std.view(1, 64, 1, 1, 1)
         return latent.flatten(2).transpose(1, 2), (1, parameters.shape[-2], parameters.shape[-1])
 
+    def _sample_training_inputs(self, target):
+        noise = torch.randn(target.shape, dtype=target.dtype, device=target.device, generator=self.generator)
+        index = torch.randint(len(self._timesteps), (1,), device=target.device, generator=self.generator)
+        sigma = self._sigmas[index].to(target.dtype).view(1, 1, 1)
+        noisy_target = (1 - sigma) * target + sigma * noise
+        timestep = self._timesteps[index] / _TRAINING_TIME_SCALE
+        return noisy_target, noise - target, timestep, self._loss_weights[index]
+
     @torch.no_grad()
     def process_condition(
         self,
@@ -276,10 +303,9 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 "img_mask",
                 "training_target",
                 "latents",
+                "loss_weight",
             )
         }
-        if self.config.training_recipe == "diffsynth":
-            result["loss_weight"] = []
         for parameters, context, shapes, image_mask, context_mask, refs, ref_shapes in zip(latents, *fields):
             target, target_shape = self._pack_posterior(parameters)
             if [tuple(shape) for shape in shapes] != [target_shape]:
@@ -299,9 +325,8 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
                 packed_refs.append(packed)
             if int(image_mask.bool().sum()) * 4 != sum(ref.shape[1] for ref in packed_refs):
                 raise ValueError("Qwen3-VL reference image slots do not match the VAE reference latent count.")
-            noisy_target, velocity, timestep, weight = self.flow_match.sample(target, self.generator)
-            if weight is not None:
-                result["loss_weight"].append(weight)
+            noisy_target, velocity, timestep, weight = self._sample_training_inputs(target)
+            result["loss_weight"].append(weight)
             image_mask = image_mask.to(device=target.device, dtype=torch.bool)
             result["hidden_states"].append(torch.cat([*packed_refs, noisy_target], dim=1))
             result["training_target"].append(velocity)

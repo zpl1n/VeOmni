@@ -1,10 +1,31 @@
-"""Native Qwen-Image 2.1 DiT, following the DiffSynth-Studio single-stream model."""
+# Copyright 2026 Qwen-Image Team, The HuggingFace Team, and Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Native Qwen-Image 2.1 DiT, following the DiffSynth-Studio single-stream model.
+
+Parameter names match the released Diffusers checkpoint. Rotary frequencies use
+real pairs for Ascend. Ulysses exchanges heads and sequence shards, while CP
+keeps queries local and gathers keys and values.
+"""
 
 from __future__ import annotations
 
 import copy
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from itertools import chain, groupby, repeat
 from math import prod
 from numbers import Integral
 
@@ -19,24 +40,254 @@ from transformers.modeling_outputs import ModelOutput
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, cached_file
 
 from veomni.distributed.parallel_state import get_parallel_state
+from veomni.distributed.sequence_parallel import (
+    gather_heads_scatter_seq,
+    gather_outputs,
+    gather_seq_scatter_heads,
+    slice_input_tensor,
+)
 from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.ops import VeomniOp
 
 from .configuration_qwen_image21_transformer import QWEN_IMAGE21_MODEL_FIELDS, QwenImage21Transformer2DConfig
-from .layers import (
-    QwenImage21OutputNorm,
-    QwenImage21RMSNorm,
-    QwenImage21Rope,
-    QwenImage21SwiGLU,
-    QwenImage21TextProjection,
-    QwenImage21TimeProjection,
-    apply_rotary,
-    select_modulation,
-)
-from .parallel import joint_attention, joint_forward
 
 
 _SUPPORTED_ATTENTION = frozenset({"eager", "sdpa", "veomni_sdpa"})
+_LATENT_TOKENS_PER_IMAGE_SLOT = 4
+
+
+class QwenImage21Rope(nn.Module):
+    """Three-axis RoPE with centered image coordinates and sequential text."""
+
+    def __init__(self, axes_dims):
+        super().__init__()
+        # Keep deterministic tables outside the state dict and meta/FSDP buffers.
+        positions = torch.cat([torch.arange(8192, device="cpu"), torch.arange(-1024, 0, device="cpu")])
+        self.frequencies = []
+        for dim in axes_dims:
+            inverse = 1.0 / torch.pow(10000, torch.arange(0, dim, 2, dtype=torch.float32, device="cpu") / dim)
+            angles = torch.outer(positions, inverse)
+            self.frequencies.append(torch.stack((angles.cos(), angles.sin()), dim=-1))
+
+    def forward(self, img_shapes, image_tokens, device):
+        frame, height, width = [], [], []
+        cursor = position = 0
+        for _, h, w in img_shapes:
+            start = image_tokens.index(True, cursor)
+            text = list(range(position, position + start - cursor))
+            position += len(text)
+            frame.extend(text)
+            height.extend(text)
+            width.extend(text)
+            frame.extend([position] * (h * w))
+            height.extend(row for row in range(h // 2 - h, h // 2) for _ in range(w))
+            width.extend(list(range(w // 2 - w, w // 2)) * h)
+            position += max(h, w)
+            cursor = start + h * w
+        text = list(range(position, position + len(image_tokens) - cursor))
+        frame.extend(text)
+        height.extend(text)
+        width.extend(text)
+        table_device = torch.device("cpu") if device.type == "npu" else device
+        self.frequencies = [freq.to(table_device) for freq in self.frequencies]
+        tables = [
+            freq[torch.tensor(ids, device=table_device)] for freq, ids in zip(self.frequencies, (frame, height, width))
+        ]
+        return torch.cat(tables, dim=-2).to(device)
+
+
+def apply_rotary(hidden_states, frequencies):
+    real, imaginary = hidden_states.float().unflatten(-1, (-1, 2)).unbind(-1)
+    cos, sin = frequencies[None, :, None].unbind(-1)
+    rotated = torch.stack((real * cos - imaginary * sin, real * sin + imaginary * cos), dim=-1)
+    return rotated.flatten(-2).to(hidden_states.dtype)
+
+
+class QwenImage21TimestepEmbedding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.linear_1 = nn.Linear(256, dim, bias=False)
+        self.linear_2 = nn.Linear(dim, dim, bias=False)
+
+    def forward(self, features):
+        return self.linear_2(F.silu(self.linear_1(features)))
+
+
+class QwenImage21TimeProjection(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.timestep_embedder = QwenImage21TimestepEmbedding(dim)
+        self.frequencies = torch.exp(-math.log(10000) * torch.arange(128, dtype=torch.float32, device="cpu") / 128)
+
+    def forward(self, timestep, hidden_states):
+        angles = (1000.0 * timestep.float())[:, None] * self.frequencies.to(timestep.device)
+        features = torch.cat((angles.cos(), angles.sin()), dim=-1)
+        return self.timestep_embedder(features.to(hidden_states.dtype))
+
+
+class QwenImage21RMSNorm(nn.Module):
+    def __init__(self, dim, eps, *, zero_centered=False):
+        super().__init__()
+        self.eps = eps
+        self.zero_centered = zero_centered
+        self.weight = nn.Parameter(torch.zeros(dim) if zero_centered else torch.ones(dim))
+
+    def forward(self, hidden_states):
+        values = hidden_states.float()
+        normalized = values * torch.rsqrt(values.square().mean(dim=-1, keepdim=True) + self.eps)
+        if self.zero_centered:
+            return (normalized * (1 + self.weight.float())).to(hidden_states.dtype)
+        return normalized.to(self.weight.dtype) * self.weight
+
+
+class QwenImage21TextProjection(nn.Module):
+    def __init__(self, input_dim, dim, eps):
+        super().__init__()
+        self.text_norm = QwenImage21RMSNorm(input_dim, eps, zero_centered=True)
+        self.in_layer = nn.Linear(input_dim, dim, bias=False)
+        self.out_layer = nn.Linear(dim, dim, bias=False)
+
+    def forward(self, context):
+        return self.out_layer(F.gelu(self.in_layer(self.text_norm(context)), approximate="tanh"))
+
+
+class QwenImage21SwiGLU(nn.Module):
+    def __init__(self, dim, hidden_dim):
+        super().__init__()
+        self.proj = nn.Linear(dim, hidden_dim, bias=False)
+        self.out = nn.Linear(hidden_dim, dim, bias=False)
+        self.gate_layer = nn.Linear(dim, hidden_dim, bias=False)
+
+    def forward(self, hidden_states):
+        return self.out(F.silu(self.gate_layer(hidden_states)) * self.proj(hidden_states))
+
+
+def select_modulation(params, target_mask):
+    if target_mask is None:
+        return params.unsqueeze(1)
+    return torch.where(target_mask.view(1, -1, 1), params[:-1, None], params[-1:, None])
+
+
+class QwenImage21OutputNorm(nn.Module):
+    def __init__(self, dim, eps):
+        super().__init__()
+        self.linear = nn.Linear(dim, dim, bias=False)
+        self.norm = nn.LayerNorm(dim, eps=eps, elementwise_affine=False)
+
+    def forward(self, hidden_states, temb, target_mask):
+        scale = self.linear(F.silu(temb).to(hidden_states.dtype))
+        return self.norm(hidden_states) * (1 + select_modulation(scale, target_mask))
+
+
+def _prefix_segments(image_tokens, image_lengths):
+    """Split the prefix into causal text runs and separate bidirectional images."""
+    if sum(image_lengths) != sum(image_tokens):
+        raise ValueError("img_shapes must account for all image tokens in img_mask.")
+    image_ids = chain.from_iterable(repeat(index, length) for index, length in enumerate(image_lengths[:-1]))
+    prefix_ids = (next(image_ids) if is_image else -1 for is_image in image_tokens[: -image_lengths[-1]])
+    segments = []
+    start = 0
+    for image_id, tokens in groupby(prefix_ids):
+        end = start + sum(1 for _ in tokens)
+        segments.append((start, end, image_id < 0))
+        start = end
+    return segments
+
+
+def joint_attention(attention, attn, query, key, value, segments, key_valid):
+    """Apply the same block-causal rule in serial, Ulysses, and CP."""
+    state = get_parallel_state()
+    if state.ulysses_enabled:
+        query, key, value = [
+            gather_seq_scatter_heads(
+                tensor.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=state.ulysses_group
+            ).permute(2, 1, 0, 3)
+            for tensor in (query, key, value)
+        ]
+    elif state.cp_enabled:
+        # Keys/values are used by different local query rows, so backward must
+        # SUM all ranks' contributions before returning each source shard.
+        key = gather_outputs(key, gather_dim=1, group=state.cp_group)
+        value = gather_outputs(value, gather_dim=1, group=state.cp_group)
+    query_start = state.cp_rank * query.shape[1] if state.cp_enabled else 0
+    query_end = query_start + query.shape[1]
+    prefix_length = segments[-1][1] if segments else 0
+    ranges = [*segments, (prefix_length, key.shape[1], False)]
+    outputs = []
+    for start, end, is_text in ranges:
+        left, right = max(start, query_start), min(end, query_end)
+        if left >= right:
+            continue
+        mask = None if key_valid is None else key_valid[:, None, None, :end]
+        if is_text:
+            queries = torch.arange(left, right, device=query.device)
+            keys = torch.arange(end, device=query.device)
+            causal = (keys[None, :] <= queries[:, None])[None, None]
+            mask = causal if mask is None else mask & causal
+        outputs.append(
+            attention(attn, query[:, left - query_start : right - query_start], key[:, :end], value[:, :end], mask)
+        )
+    output = torch.cat(outputs, dim=1)
+    if state.ulysses_enabled:
+        output = gather_heads_scatter_seq(
+            output.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=state.ulysses_group
+        ).permute(2, 1, 0, 3)
+    return output
+
+
+def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_shapes, img_mask, text_mask):
+    """Interleave text and latents before running the optionally sharded blocks."""
+    state = get_parallel_state()
+    hidden_states = model.img_in(hidden_states)
+    context = model.txt_in(encoder_hidden_states)
+    repeats = torch.where(img_mask[0], _LATENT_TOKENS_PER_IMAGE_SLOT, 1)
+    image_mask = torch.repeat_interleave(img_mask[0], repeats)
+    image_tokens = image_mask.tolist()
+    image_lengths = [prod(shape) for shape in img_shapes[0]]
+    target_tokens = image_lengths[-1]
+    segments = _prefix_segments(image_tokens, image_lengths)
+    target_slots = target_tokens // _LATENT_TOKENS_PER_IMAGE_SLOT
+    joint = torch.cat([context, context.new_zeros(context.shape[0], target_slots, context.shape[2])], dim=1)
+    joint = joint.repeat_interleave(repeats, dim=1)
+    joint[:, image_mask] = hidden_states
+    length = joint.shape[1]
+    prefix_length = length - target_tokens
+    rotary = model.pos_embed(img_shapes[0], image_tokens, device=hidden_states.device)
+    timestep = timestep.to(hidden_states.dtype)
+    modulation_mask = None
+    if model.config.causal_condition:
+        timestep = torch.cat([timestep, timestep.new_zeros(1)], dim=0)
+        modulation_mask = torch.arange(length, device=joint.device) >= prefix_length
+    temb = model.time_text_embed(timestep, hidden_states)
+    modulation = model.modulation(temb)
+    key_valid = None
+    if text_mask is not None or state.sp_enabled:
+        key_valid = torch.ones(context.shape[0], length, dtype=torch.bool, device=joint.device)
+    if text_mask is not None:
+        text_positions = (~image_mask).nonzero(as_tuple=True)[0]
+        vlm_text = ~img_mask[0][: text_mask.shape[1]]
+        key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
+    if state.sp_enabled:
+        padding = (-length) % state.sp_size
+        joint = slice_input_tensor(F.pad(joint, (0, 0, 0, padding)), dim=1, padding=False)
+        rotary = slice_input_tensor(F.pad(rotary, (0, 0, 0, 0, 0, padding)), dim=0, padding=False)
+        key_valid = F.pad(key_valid, (0, padding), value=False)
+        if modulation_mask is not None:
+            modulation_mask = slice_input_tensor(
+                F.pad(modulation_mask, (0, padding), value=False), dim=0, padding=False
+            )
+    for block in model.transformer_blocks:
+        args = (joint, modulation, rotary, modulation_mask, segments, key_valid)
+        if torch.is_grad_enabled() and model.gradient_checkpointing:
+            joint = model._gradient_checkpointing_func(block, *args)
+        else:
+            joint = block(*args)
+    output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
+    if state.sp_enabled:
+        # Gather backward sums the replicated loss gradients, compensating for
+        # FSDP2's averaging over the combined DP/SP mesh.
+        output = gather_outputs(output, gather_dim=1)
+    return output[:, prefix_length:length]
 
 
 def eager_attention_forward(module, query, key, value, attention_mask, scaling=None, dropout=0.0, **kwargs):

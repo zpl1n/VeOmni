@@ -6,7 +6,6 @@ model:
   condition_model_cfg:
     height: 512
     width: 512
-    training_recipe: diffsynth
     enable_edit: false
     image_resize_mode: center_crop
     text_encoder_attn_implementation: sdpa

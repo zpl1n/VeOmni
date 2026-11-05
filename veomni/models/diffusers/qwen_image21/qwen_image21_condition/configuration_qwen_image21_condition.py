@@ -10,11 +10,9 @@ class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
         processor_subfolder: str = "processor",
         text_encoder_subfolder: str = "text_encoder",
         vae_subfolder: str = "vae",
-        scheduler_subfolder: str = "scheduler",
         height: int = 1024,
         width: int = 1024,
         num_train_timesteps: int = 1000,
-        training_recipe: str = "diffusers",
         enable_edit: bool = False,
         seed: int = 42,
         image_resize_mode: str = "resize",
@@ -35,14 +33,14 @@ class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
         for name, dtype in (("text_encoder_dtype", text_encoder_dtype), ("vae_dtype", vae_dtype)):
             if dtype not in ("float32", "bfloat16", "float16"):
                 raise ValueError(f"{name} must be float32, bfloat16 or float16.")
-        if training_recipe not in ("diffusers", "diffsynth"):
-            raise ValueError("training_recipe must be 'diffusers' or 'diffsynth'.")
-        self.training_recipe = training_recipe
+        # Accept earlier DiffSynth configs without retaining the removed selector.
+        if kwargs.pop("training_recipe", "diffsynth") != "diffsynth":
+            raise ValueError("Qwen-Image 2.1 uses the DiffSynth schedule. Remove training_recipe from the config.")
+        kwargs.pop("scheduler_subfolder", None)
         self.base_model_path = base_model_path
         self.processor_subfolder = processor_subfolder
         self.text_encoder_subfolder = text_encoder_subfolder
         self.vae_subfolder = vae_subfolder
-        self.scheduler_subfolder = scheduler_subfolder
         self.height = height
         self.width = width
         self.num_train_timesteps = num_train_timesteps
@@ -54,6 +52,14 @@ class QwenImage21ConditionModelConfig(VeOmniPretrainedConfig):
         self.vae_dtype = vae_dtype
         self.max_sequence_length = max_sequence_length
         super().__init__(**kwargs)
+
+    @classmethod
+    def from_dict(cls, config_dict, **kwargs):
+        config_dict = dict(config_dict)
+        for key in ("training_recipe", "scheduler_subfolder"):
+            if key in kwargs:
+                config_dict[key] = kwargs.pop(key)
+        return super().from_dict(config_dict, **kwargs)
 
     @classmethod
     def get_config_dict(cls, pretrained_model_name_or_path, **kwargs):

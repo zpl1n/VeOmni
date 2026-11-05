@@ -31,12 +31,12 @@ Qwen-Image-2.1/
   text_encoder/  # Qwen3-VL weights and config
   processor/     # tokenizer, image processor and chat template
   vae/           # 4-channel RGBA VAE, 64-channel latents
-  scheduler/     # flow-matching schedule configuration
   model_index.json
 ```
 
 `model.model_path` points to `transformer/`; `model.config_path` points to its
-`config.json`; `model.condition_model_path` points to the snapshot root. All
+`config.json` or the matching [7B model config](../../configs/model_configs/qwen_image21/qwen_image21_7b.json)
+in VeOmni. `model.condition_model_path` points to the snapshot root. All
 components must come from the same snapshot. The transformer keeps the upstream
 parameter names and saves an upstream-compatible Diffusers transformer config.
 
@@ -106,10 +106,9 @@ global batch size to match the chosen data-parallel launch size.
 
 Then launch `configs/dit/qwen_image21_offline.yaml`, supplying the same three
 model-path overrides and `--data.train_path output/qwen_image21_embedding`.
-With `training_recipe: diffsynth`, this stage reads the VAE configuration for
-latent normalization. The `diffusers` recipe also reads the scheduler config.
-Both recipes sample new noise and a timestep each step. Noise-generator state
-is included in the framework's checkpoint extra state for resumption.
+This stage reads the VAE configuration for latent normalization and samples
+new noise and a timestep each step. Noise-generator state is included in the
+framework's checkpoint extra state for resumption.
 
 The cache stores raw VAE posterior parameters, pre-final-norm Qwen3-VL features,
 attention masks and reference-image layouts. Existing Qwen-Image 2.1 Parquet
@@ -122,10 +121,9 @@ DiT cache format serializes tensor fields with pickle.
 ## Training semantics and limits
 
 - This integration uses the VAE posterior mode for targets and references.
-  The examples use `training_recipe: diffsynth`: uniform index sampling from a
-  1,000-step schedule with fixed exponential shift `mu=0.8`, terminal sigma 0.02,
-  and normalized timestep loss weights. Set `training_recipe: diffusers` to use
-  the previous snapshot-based dynamic shift and unweighted MSE.
+  Training uses the DiffSynth Flow Matching schedule directly, with uniform
+  index sampling from a default 1,000 steps, fixed exponential shift `mu=0.8`,
+  terminal sigma 0.02, and normalized timestep loss weights.
   The noisy target is `(1-sigma) * latent + sigma * noise`, and the target velocity
   is `noise - latent`. Loss is FP32 MSE over target tokens, weighted before averaging per sample.
 - Reference latents stay clean and precede the noisy target. The official
@@ -230,5 +228,7 @@ The DiffSynth recipe follows `FlowMatchScheduler.set_timesteps_qwen_image` and
 Schedule construction stays on CPU FP32; sampled times and loss weights stay FP32
 to avoid quantizing timestep lookup through BF16. This aligns the schedule and
 loss equations, not bitwise RNG or all mixed-precision details of another framework.
-Existing raw-posterior embedding caches can be reused when only the recipe changes;
-changing the recipe changes the optimization objective, so compare experiments explicitly.
+Existing raw-posterior embedding caches can be reused. Remove the old
+`training_recipe` field from Qwen-Image 2.1 configs. Runs started with the
+earlier Diffusers schedule should resume on their original code revision to
+preserve the training objective.
