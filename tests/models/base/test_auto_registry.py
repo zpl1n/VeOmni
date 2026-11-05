@@ -1070,16 +1070,3 @@ def test_cpu_hf_reference_constructs_without_optional_attention_kernels(monkeypa
         module_config = getattr(module, "config", None)
         if isinstance(module_config, PretrainedConfig):
             assert module_config._attn_implementation in ("eager", "sdpa", "veomni_sdpa")
-
-
-@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
-@pytest.mark.parametrize("npu", [False, True])
-def test_qwen_image21_declares_context_parallel_support(monkeypatch, npu):
-    from types import SimpleNamespace
-
-    import veomni.models.auto as auto
-
-    monkeypatch.setattr(auto, "is_parallel_state_initialized", lambda: True)
-    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True))
-    monkeypatch.setattr(auto, "IS_NPU_AVAILABLE", npu)
-    check_context_parallel_supported(_tiny_qwen_image21_config())

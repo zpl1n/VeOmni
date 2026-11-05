@@ -71,13 +71,9 @@ def candidate_forward(model, samples, targets):
 
 
 def main(output_dir, mode):
-    topology = mode.rsplit("-", 1)[-1]
-    ulysses = 2 if topology == "sp2" else 1
-    cp = 2 if topology == "cp2" else 1
-    precision = mode.rsplit("-", 1)[0] if topology in ("sp2", "cp2") else mode
-    if precision not in ("fp32", "bf16-gc"):
+    if mode not in ("fp32", "bf16-gc"):
         raise ValueError(f"Unknown precision mode: {mode}")
-    bf16 = precision == "bf16-gc"
+    bf16 = mode == "bf16-gc"
     device = get_device_type()
     if device not in ("cuda", "npu"):
         raise RuntimeError("This worker requires real accelerator execution; no CPU fallback is allowed.")
@@ -88,13 +84,7 @@ def main(output_dir, mode):
     world_size = torch.distributed.get_world_size()
     if world_size != 2:
         raise ValueError("The FSDP2 regression uses exactly two ranks.")
-    init_parallel_state_from_config(
-        AcceleratorConfig(
-            dp_replicate_size=1, dp_shard_size=world_size // (ulysses * cp), ulysses_size=ulysses, cp_size=cp
-        ),
-        name="base",
-    )
-    init_parallel_state_from_config(AcceleratorConfig(dp_replicate_size=1, dp_shard_size=world_size), name="reference")
+    init_parallel_state_from_config(AcceleratorConfig(dp_replicate_size=1, dp_shard_size=world_size), name="base")
     try:
         with use_parallel_state("base"):
             torch.manual_seed(427)
@@ -148,24 +138,6 @@ def main(output_dir, mode):
             plain_parameters = dict(unsharded.named_parameters())
             for name, parameter in sharded.named_parameters():
                 torch.testing.assert_close(full_cpu(parameter), full_cpu(plain_parameters[name]), atol=0, rtol=0)
-            bf16_parallel = bf16 and (ulysses > 1 or cp > 1)
-            max_relative_l2 = 0.0
-
-            def compare_parallel(actual, expected, name):
-                nonlocal max_relative_l2
-                if not bf16_parallel:
-                    torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-4, msg=name)
-                    return
-                # Partitioning changes BF16 partial-gradient rounding. FP32 and
-                # non-SP FSDP comparisons keep their original strict tolerances.
-                actual, expected = actual.float(), expected.float()
-                difference = actual - expected
-                reference_norm = expected.norm()
-                relative = difference.norm() / reference_norm.clamp_min(1e-12)
-                max_relative_l2 = max(max_relative_l2, float(relative))
-                assert difference.norm() <= 0.02 * reference_norm + 1e-7, (name, float(relative))
-                assert difference.abs().max() <= 0.02 * expected.abs().max() + 2e-5, name
-
             # SGD keeps the comparison well-conditioned even for near-zero gradients.
             # The trainer integration separately exercises VeOmni's default AdamW.
             optimizers = [torch.optim.SGD(model.parameters(), lr=0.01) for model in models]
@@ -178,18 +150,16 @@ def main(output_dir, mode):
                     with patch("diffusers.models.normalization.is_torch_npu_available", return_value=False):
                         cpu_predictions, cpu_loss = reference_forward(reference, cpu_samples, cpu_targets)
                         cpu_loss.backward()
-                with use_parallel_state("reference"):
-                    predictions, loss = candidate_forward(unsharded, samples, targets)
+                predictions, loss = candidate_forward(unsharded, samples, targets)
                 sharded_predictions, sharded_loss = candidate_forward(sharded, samples, targets)
                 if not bf16:
                     torch.testing.assert_close(loss.cpu(), cpu_loss, atol=3e-5, rtol=3e-4)
                     for cpu, plain in zip(cpu_predictions, predictions, strict=True):
                         torch.testing.assert_close(plain.cpu(), cpu, atol=3e-5, rtol=3e-4)
-                compare_parallel(sharded_loss, loss, "loss")
+                torch.testing.assert_close(sharded_loss, loss, atol=2e-5, rtol=2e-4)
                 for plain, fsdp in zip(predictions, sharded_predictions, strict=True):
-                    compare_parallel(fsdp, plain, "prediction")
-                with use_parallel_state("reference"):
-                    loss.backward()
+                    torch.testing.assert_close(fsdp, plain, atol=2e-5, rtol=2e-4)
+                loss.backward()
                 sharded_loss.backward()
                 cpu_parameters = dict(reference.named_parameters())
                 plain_parameters = dict(unsharded.named_parameters())
@@ -211,7 +181,7 @@ def main(output_dir, mode):
                         expected = cpu_parameters[name].grad
                         assert expected is not None, name
                         torch.testing.assert_close(plain_grad, expected, atol=5e-5, rtol=5e-4, msg=name)
-                    compare_parallel(fsdp_grad, plain_grad, name)
+                    torch.testing.assert_close(fsdp_grad, plain_grad, atol=2e-5, rtol=2e-4, msg=name)
                 assert nonzero_gradients > 0
                 before = {name: full_cpu(parameter).clone() for name, parameter in plain_parameters.items()}
                 for optimizer in optimizers:
@@ -232,7 +202,6 @@ def main(output_dir, mode):
                             "mode": mode,
                             "upstream_cpu": "covered-by-fp32-case" if bf16 else "PASS",
                             "fsdp2": "PASS",
-                            **({"bf16_parallel_max_relative_l2": max_relative_l2} if bf16_parallel else {}),
                         }
                     )
                 )

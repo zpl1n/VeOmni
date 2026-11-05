@@ -92,11 +92,8 @@ def check_context_parallel_supported(config: PretrainedConfig) -> None:
     if not get_parallel_state().cp_enabled:
         return
 
-    config_type = type(config)
-    if IS_NPU_AVAILABLE and not getattr(config_type, "_supports_npu_context_parallel", False):
-        raise NotImplementedError("Context parallelism is GPU-only for this model; set cp_size=1 on Ascend/NPU runs.")
-    if getattr(config_type, "_supports_context_parallel", False):
-        return
+    if IS_NPU_AVAILABLE:
+        raise NotImplementedError("Context parallelism is GPU-only in this release; set cp_size=1 on Ascend/NPU runs.")
 
     from .seed_omni.modules.module_configuration_base import OmniModuleConfig
 

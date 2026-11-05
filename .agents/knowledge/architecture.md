@@ -94,11 +94,10 @@ veomni/
 DiT with official checkpoint keys, model-local block-causal attention, and
 real-valued NPU rotary embeddings. Its `qwen_image21_condition/` package directly
 encodes inputs with Qwen3-VL and the RGBA VAE and prepares Flow Matching inputs
-for both online and cached offline training. `qwen_image21_online` preserves image alpha; existing
-image transforms keep their RGB default. The standard `DiTTrainer` handles all
-three stages without model-specific trainer branches. FSDP2 supports separate
-Ulysses SP (all-to-all) or CP (local queries with all-gathered K/V); combined
-CP/Ulysses is still rejected by the framework. See `docs/examples/qwen_image21.md`.
+for both online and cached offline training. `qwen_image21_online` preserves
+image alpha. The standard `DiTTrainer` handles all three stages, and training
+uses FSDP2 with complete token sequences on each data-parallel rank. See
+`docs/examples/qwen_image21.md`.
 
 ### FlexAttention package
 

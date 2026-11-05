@@ -838,15 +838,3 @@ Copy the remaining fields from the Diffusers transformer config into the same JS
 | Double SP gather (output is wrong) | `flash_attention_forward` called without `skip_ulysses=True` while AllToAll already done manually | Pass `skip_ulysses=True` to all `attention_interface(...)` calls in the SP processor |
 | `KeyError` in `ALL_ATTENTION_FUNCTIONS` | `apply_veomni_attention_patch()` not called before model load | Kernel integrations are installed by `apply_ops_patch()` when `veomni.ops` is imported; ensure that happens before model loading |
 | `process_condition` key names mismatch | Returned dict keys don't match `forward()` parameter names | Check that every key in `process_condition` output corresponds to a `forward()` parameter |
-
-### Declaring context-parallel build support
-
-The model builder checks CP capability before constructing a model. A DiT config
-class that implements CP can declare `_supports_context_parallel = True`;
-NPU support additionally requires `_supports_npu_context_parallel = True`.
-These are implementation capabilities read from the config class, not YAML
-switches: they must only be declared after the model implements sequence
-sharding, attention communication and gradient scaling. Existing model-family
-allowlists and NPU rejection remain in force for classes without these flags.
-See [the build gate](../../../veomni/models/auto.py) and
-[Qwen-Image 2.1's config](../../../veomni/models/diffusers/qwen_image21/qwen_image21_transformer/configuration_qwen_image21_transformer.py).

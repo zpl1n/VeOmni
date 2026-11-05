@@ -382,7 +382,7 @@ def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit
     reason="requires two accelerators for real FSDP2 gradient and update parity",
 )
 @pytest.mark.launch_plan(provider=CasePlan.sequential(_TWO_RANKS))
-@pytest.mark.parametrize("mode", ["fp32", "bf16-gc", "fp32-sp2", "fp32-cp2", "bf16-gc-sp2", "bf16-gc-cp2"])
+@pytest.mark.parametrize("mode", ["fp32", "bf16-gc"])
 def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
     environment = os.environ.copy()
     for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE", "LOCAL_WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"):
@@ -408,14 +408,12 @@ def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads((tmp_path / "result.json").read_text())
-    if mode.startswith("bf16-gc-"):
-        assert report.pop("bf16_parallel_max_relative_l2") <= 0.02
     assert report == {
         "device": get_device_type(),
         "ranks": 2,
         "steps": 2,
         "mode": mode,
-        "upstream_cpu": "covered-by-fp32-case" if mode.startswith("bf16-gc") else "PASS",
+        "upstream_cpu": "covered-by-fp32-case" if mode == "bf16-gc" else "PASS",
         "fsdp2": "PASS",
     }
 
@@ -490,40 +488,3 @@ def test_diffsynth_weight_flows_from_condition_to_training(snapshot):
     plain_grad = torch.autograd.grad(plain, parameter)[0]
     weighted_grad = torch.autograd.grad(weighted, parameter)[0]
     torch.testing.assert_close(weighted_grad, plain_grad * weight.squeeze(), atol=1e-6, rtol=1e-5)
-
-
-@pytest.mark.launch_plan(provider=LaunchSpec(nproc=4, device="cpu"))
-def test_sequence_and_context_parallel_cpu_gradients_and_updates(tmp_path):
-    environment = os.environ.copy()
-    for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE", "LOCAL_WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"):
-        environment.pop(key, None)
-    environment.update(
-        {
-            "CUDA_VISIBLE_DEVICES": "",
-            "ASCEND_RT_VISIBLE_DEVICES": "",
-            "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
-            "OMP_NUM_THREADS": "1",
-        }
-    )
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "torch.distributed.run",
-            "--standalone",
-            "--nnodes=1",
-            "--nproc-per-node=4",
-            "-m",
-            "tests.models.qwen_image21_parallel_worker",
-            str(tmp_path),
-        ],
-        cwd=ROOT,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    report = json.loads((tmp_path / "result.json").read_text())
-    assert len(report) == 8
-    assert {item["mode"] for item in report} == {"sp2", "sp4", "cp2", "cp4"}

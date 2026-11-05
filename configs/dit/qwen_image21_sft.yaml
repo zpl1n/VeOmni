@@ -28,9 +28,6 @@ model:
     max_grad_norm: 1.0
   accelerator:
     init_device: meta
-    # Enable one sequence axis at a time; keep both at 1 for embedding precompute.
-    ulysses_size: 1
-    cp_size: 1
     gradient_checkpointing:
       enable: true
     fsdp_config:

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from math import prod
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -49,6 +50,16 @@ def tiny_ops(attention="sdpa"):
         rms_norm_implementation="eager",
         rotary_pos_emb_implementation="eager",
     )
+
+
+def test_model_rejects_sequence_sharding(monkeypatch):
+    from veomni.models.diffusers.qwen_image21.qwen_image21_transformer import modeling_qwen_image21_transformer
+
+    monkeypatch.setattr(
+        modeling_qwen_image21_transformer, "get_parallel_state", lambda: SimpleNamespace(sp_enabled=True)
+    )
+    with pytest.raises(NotImplementedError, match="requires ulysses_size=1 and cp_size=1"):
+        QwenImage21Transformer2DModel(tiny_config())
 
 
 def sample_inputs(edit=False, requires_grad=True):

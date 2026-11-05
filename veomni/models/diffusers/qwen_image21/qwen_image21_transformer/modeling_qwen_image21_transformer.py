@@ -15,8 +15,7 @@
 """Native Qwen-Image 2.1 DiT, following the DiffSynth-Studio single-stream model.
 
 Parameter names match the released Diffusers checkpoint. Rotary frequencies use
-real pairs for Ascend. Ulysses exchanges heads and sequence shards, while CP
-keeps queries local and gathers keys and values.
+real pairs for Ascend.
 """
 
 from __future__ import annotations
@@ -40,12 +39,6 @@ from transformers.modeling_outputs import ModelOutput
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, cached_file
 
 from veomni.distributed.parallel_state import get_parallel_state
-from veomni.distributed.sequence_parallel import (
-    gather_heads_scatter_seq,
-    gather_outputs,
-    gather_seq_scatter_heads,
-    slice_input_tensor,
-)
 from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.ops import VeomniOp
 
@@ -194,50 +187,8 @@ def _prefix_segments(image_tokens, image_lengths):
     return segments
 
 
-def joint_attention(attention, attn, query, key, value, segments, key_valid):
-    """Apply the same block-causal rule in serial, Ulysses, and CP."""
-    state = get_parallel_state()
-    if state.ulysses_enabled:
-        query, key, value = [
-            gather_seq_scatter_heads(
-                tensor.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=state.ulysses_group
-            ).permute(2, 1, 0, 3)
-            for tensor in (query, key, value)
-        ]
-    elif state.cp_enabled:
-        # Keys/values are used by different local query rows, so backward must
-        # SUM all ranks' contributions before returning each source shard.
-        key = gather_outputs(key, gather_dim=1, group=state.cp_group)
-        value = gather_outputs(value, gather_dim=1, group=state.cp_group)
-    query_start = state.cp_rank * query.shape[1] if state.cp_enabled else 0
-    query_end = query_start + query.shape[1]
-    prefix_length = segments[-1][1] if segments else 0
-    ranges = [*segments, (prefix_length, key.shape[1], False)]
-    outputs = []
-    for start, end, is_text in ranges:
-        left, right = max(start, query_start), min(end, query_end)
-        if left >= right:
-            continue
-        mask = None if key_valid is None else key_valid[:, None, None, :end]
-        if is_text:
-            queries = torch.arange(left, right, device=query.device)
-            keys = torch.arange(end, device=query.device)
-            causal = (keys[None, :] <= queries[:, None])[None, None]
-            mask = causal if mask is None else mask & causal
-        outputs.append(
-            attention(attn, query[:, left - query_start : right - query_start], key[:, :end], value[:, :end], mask)
-        )
-    output = torch.cat(outputs, dim=1)
-    if state.ulysses_enabled:
-        output = gather_heads_scatter_seq(
-            output.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=state.ulysses_group
-        ).permute(2, 1, 0, 3)
-    return output
-
-
 def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_shapes, img_mask, text_mask):
-    """Interleave text and latents before running the optionally sharded blocks."""
-    state = get_parallel_state()
+    """Interleave text and latents before running the Transformer blocks."""
     hidden_states = model.img_in(hidden_states)
     context = model.txt_in(encoder_hidden_states)
     repeats = torch.where(img_mask[0], _LATENT_TOKENS_PER_IMAGE_SLOT, 1)
@@ -261,21 +212,11 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
     temb = model.time_text_embed(timestep, hidden_states)
     modulation = model.modulation(temb)
     key_valid = None
-    if text_mask is not None or state.sp_enabled:
-        key_valid = torch.ones(context.shape[0], length, dtype=torch.bool, device=joint.device)
     if text_mask is not None:
+        key_valid = torch.ones(context.shape[0], length, dtype=torch.bool, device=joint.device)
         text_positions = (~image_mask).nonzero(as_tuple=True)[0]
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
-    if state.sp_enabled:
-        padding = (-length) % state.sp_size
-        joint = slice_input_tensor(F.pad(joint, (0, 0, 0, padding)), dim=1, padding=False)
-        rotary = slice_input_tensor(F.pad(rotary, (0, 0, 0, 0, 0, padding)), dim=0, padding=False)
-        key_valid = F.pad(key_valid, (0, padding), value=False)
-        if modulation_mask is not None:
-            modulation_mask = slice_input_tensor(
-                F.pad(modulation_mask, (0, padding), value=False), dim=0, padding=False
-            )
     for block in model.transformer_blocks:
         args = (joint, modulation, rotary, modulation_mask, segments, key_valid)
         if torch.is_grad_enabled() and model.gradient_checkpointing:
@@ -283,11 +224,7 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         else:
             joint = block(*args)
     output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
-    if state.sp_enabled:
-        # Gather backward sums the replicated loss gradients, compensating for
-        # FSDP2's averaging over the combined DP/SP mesh.
-        output = gather_outputs(output, gather_dim=1)
-    return output[:, prefix_length:length]
+    return output[:, prefix_length:]
 
 
 def eager_attention_forward(module, query, key, value, attention_mask, scaling=None, dropout=0.0, **kwargs):
@@ -322,20 +259,18 @@ class QwenImage21Attention(nn.Module):
         self.norm_k = QwenImage21RMSNorm(config.attention_head_dim, config.eps)
         self.attention = VeomniOp("attention", "standard", config.ops_config.attn_implementation)
 
-    @staticmethod
-    def _attend(attn, query, key, value, mask):
+    def _attend(self, query, key, value, mask):
         if mask is not None and query.device.type == "npu" and mask.shape[-2] == 1:
             # Ascend SDPA requires the query dimension to be explicit in a dense mask.
             mask = mask.expand(*mask.shape[:-2], query.shape[1], -1).contiguous()
-        return attn.attention(
-            attn,
+        return self.attention(
+            self,
             query.transpose(1, 2),
             key.transpose(1, 2),
             value.transpose(1, 2),
             mask,
             dropout=0.0,
             is_causal=False,
-            skip_ulysses=True,
         )[0]
 
     def forward(self, hidden_states, rotary, segments, key_valid):
@@ -344,7 +279,17 @@ class QwenImage21Attention(nn.Module):
         value = self.to_v(hidden_states).unflatten(-1, (self.heads, -1))
         query = apply_rotary(self.norm_q(query).to(value.dtype), rotary)
         key = apply_rotary(self.norm_k(key).to(value.dtype), rotary)
-        output = joint_attention(self._attend, self, query, key, value, segments, key_valid)
+        prefix_length = segments[-1][1] if segments else 0
+        outputs = []
+        for start, end, is_text in [*segments, (prefix_length, key.shape[1], False)]:
+            mask = None if key_valid is None else key_valid[:, None, None, :end]
+            if is_text:
+                queries = torch.arange(start, end, device=query.device)
+                keys = torch.arange(end, device=query.device)
+                causal = (keys[None, :] <= queries[:, None])[None, None]
+                mask = causal if mask is None else mask & causal
+            outputs.append(self._attend(query[:, start:end], key[:, :end], value[:, :end], mask))
+        output = torch.cat(outputs, dim=1)
         return self.to_out[1](self.to_out[0](output.flatten(2).to(query.dtype)))
 
 
@@ -382,6 +327,8 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
     _no_split_modules = ["QwenImage21TransformerBlock"]
 
     def __init__(self, config, **kwargs):
+        if get_parallel_state().sp_enabled:
+            raise NotImplementedError("Qwen-Image 2.1 requires ulysses_size=1 and cp_size=1.")
         attention = kwargs.pop("attn_implementation", None)
         if attention is not None:
             config._attn_implementation = attention
@@ -389,9 +336,6 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
         kwargs.pop("trust_remote_code", None)
         super().__init__(config, **kwargs)
         self.config.tie_word_embeddings = False
-        if config.num_attention_heads % get_parallel_state().ulysses_size:
-            raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
-
         dim = config.num_attention_heads * config.attention_head_dim
         self.pos_embed = QwenImage21Rope(config.axes_dims_rope)
         self.time_text_embed = QwenImage21TimeProjection(dim)
