@@ -60,7 +60,7 @@ class QwenImage21Rope(nn.Module):
         for dim in axes_dims:
             inverse = 1.0 / torch.pow(10000, torch.arange(0, dim, 2, dtype=torch.float32, device="cpu") / dim)
             angles = torch.outer(positions, inverse)
-            self.frequencies.append(torch.stack((angles.cos(), angles.sin()), dim=-1))
+            self.frequencies.append(torch.view_as_real(torch.polar(torch.ones_like(angles), angles)))
 
     def forward(self, img_shapes, image_tokens, device):
         frame, height, width = [], [], []
@@ -90,7 +90,11 @@ class QwenImage21Rope(nn.Module):
 
 
 def apply_rotary(hidden_states, frequencies):
-    real, imaginary = hidden_states.float().unflatten(-1, (-1, 2)).unbind(-1)
+    pairs = hidden_states.float().unflatten(-1, (-1, 2))
+    if hidden_states.device.type in ("cpu", "cuda"):
+        rotated = torch.view_as_complex(pairs) * torch.view_as_complex(frequencies).unsqueeze(1)
+        return torch.view_as_real(rotated).flatten(-2).to(hidden_states.dtype)
+    real, imaginary = pairs.unbind(-1)
     cos, sin = frequencies[None, :, None].unbind(-1)
     rotated = torch.stack((real * cos - imaginary * sin, real * sin + imaginary * cos), dim=-1)
     return rotated.flatten(-2).to(hidden_states.dtype)
@@ -127,9 +131,10 @@ class QwenImage21RMSNorm(nn.Module):
 
     def forward(self, hidden_states):
         values = hidden_states.float()
-        normalized = values * torch.rsqrt(values.square().mean(dim=-1, keepdim=True) + self.eps)
+        inverse_rms = torch.rsqrt(values.square().mean(dim=-1, keepdim=True) + self.eps)
         if self.zero_centered:
-            return (normalized * (1 + self.weight.float())).to(hidden_states.dtype)
+            return (values * inverse_rms * (1 + self.weight.float())).to(hidden_states.dtype)
+        normalized = hidden_states * inverse_rms
         return normalized.to(self.weight.dtype) * self.weight
 
 
@@ -257,7 +262,9 @@ class QwenImage21Attention(nn.Module):
         self.to_out = nn.ModuleList([nn.Linear(dim, dim, bias=False), nn.Dropout(0.0)])
         self.norm_q = QwenImage21RMSNorm(config.attention_head_dim, config.eps)
         self.norm_k = QwenImage21RMSNorm(config.attention_head_dim, config.eps)
-        self.attention = VeomniOp("attention", "standard", config.ops_config.attn_implementation)
+        attention = config.ops_config.attn_implementation
+        # DiffSynth lets PyTorch select the SDPA kernel for each block mask.
+        self.attention = VeomniOp("attention", "standard", "sdpa" if attention == "veomni_sdpa" else attention)
 
     def _attend(self, query, key, value, mask):
         if mask is not None and query.device.type == "npu" and mask.shape[-2] == 1:
@@ -462,7 +469,12 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
             if prediction.shape != target.shape:
                 raise ValueError("Qwen-Image 2.1 prediction and training_target shapes must match exactly.")
             predictions.append(prediction)
-            loss = F.mse_loss(prediction.float(), target.float(), reduction="none").flatten(1).mean(1)
+            _, height, width = self._normalize_img_shapes(shapes)[0][-1]
+            prediction_bchw = prediction.transpose(1, 2).unflatten(2, (height, width)).float()
+            target_bchw = target.transpose(1, 2).unflatten(2, (height, width)).float()
+            loss = torch.stack(
+                [F.mse_loss(pred, truth) for pred, truth in zip(prediction_bchw.split(1), target_bchw.split(1))]
+            )
             if weight is not None:
                 loss = loss * weight.to(device=loss.device, dtype=loss.dtype)
             losses.append(loss)

@@ -7,11 +7,11 @@ training through `tasks/train_dit.py`. It is not a reproduction of an unpublishe
 Qwen training recipe, and does not implement reinforcement learning or Turbo distillation.
 
 The native VeOmni DiT follows the
-[DiffSynth-Studio Qwen-Image 2.1 architecture](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/models/qwen_image_21_dit.py).
+[DiffSynth-Studio Qwen-Image 2.1 architecture](https://github.com/modelscope/DiffSynth-Studio/blob/08fdc0da8f41426885d9432e9007e6e460a4c30d/diffsynth/models/qwen_image_21_dit.py).
 Its single-stream blocks process the joint sequence and share one timestep
 modulation projection. Frozen condition encoding calls Qwen3-VL and the RGBA
 VAE directly, following the stages in the
-[DiffSynth-Studio pipeline](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/pipelines/qwen_image_21.py).
+[DiffSynth-Studio pipeline](https://github.com/modelscope/DiffSynth-Studio/blob/08fdc0da8f41426885d9432e9007e6e460a4c30d/diffsynth/pipelines/qwen_image_21.py).
 
 ## Environment and weights
 
@@ -66,18 +66,24 @@ Select `data.source_name: Qwen-Image-2.1-Edit` and
 in the embedding and offline stages too. Text-to-image uses `Qwen-Image-2.1`
 and `enable_edit: false`. A run uses one of these two data layouts.
 
-The `qwen_image21_online` transform uses its own RGBA loader to preserve alpha from files and encoded image
-bytes. It feeds RGBA to the VAE. The prompt encoder composites reference images
-over white for Qwen3-VL and reads the hidden states before final normalization.
-Reference geometry also follows the image processor's
-pixel limits and patch-grid rounding before either encoder runs. The released processor
-requires at least 65,536 reference pixels (256 x 256 for a square), so small training
-targets can have larger reference grids. The generic `dit_online` transform retains its RGB
-default and should not be used for this model.
+Use `qwen_image21_online` to preserve alpha when loading files or encoded image
+bytes. The condition model resizes and center-crops each target and reference
+using the DiffSynth training dataset geometry. It then resizes the prepared
+references with Lanczos to approximately the target area, rounding each dimension
+to a multiple of 32. The released processor requires at least 65,536 reference
+pixels (256 x 256 for a square), so small targets can have larger reference grids.
+If the processor changes the reference token count after resizing, adjust the
+reference aspect ratio or target resolution so the Qwen3-VL slots match the VAE.
+The VAE receives RGBA, and Qwen3-VL receives references composited over white.
+The prompt encoder masks excess text before the forward pass, preserves the
+image slots and assistant suffix, and reads the last layer before final normalization.
 
 ## Online fine-tuning
 
-Start with the provided 512 x 512 example and adjust the paths:
+The default uses the DiffSynth full-training example's dynamic resolution with
+a 1,048,576-pixel cap. To start with a fixed 512 x 512 crop, set both
+`--model.condition_model_cfg.height 512` and `--model.condition_model_cfg.width 512`.
+For online training, adjust the paths in this command.
 
 ```bash
 MODEL=/path/to/Qwen-Image-2.1
@@ -109,32 +115,36 @@ global batch size to match the chosen data-parallel launch size.
 Then launch `configs/dit/qwen_image21_offline.yaml`, supplying the same three
 model-path overrides and `--data.train_path output/qwen_image21_embedding`.
 This stage reads the VAE configuration for latent normalization and samples
-new noise and a timestep each step. Noise-generator state is included in the
-framework's checkpoint extra state for resumption.
+new noise and a timestep each step. The framework saves both generators in the
+checkpoint extra state for resumption.
 
 The cache stores raw VAE posterior parameters, pre-final-norm Qwen3-VL features,
-attention masks and reference-image layouts. Existing Qwen-Image 2.1 Parquet
-caches work with the native DiT. Regenerate the cache after changing the
-images, prompts, resolution, crop policy, encoder weights or processor. Keep
-`enable_edit` consistent across both stages. Parquet is a binary format; do not
-edit the files as text. Only load caches you produced or trust: the existing
-DiT cache format serializes tensor fields with pickle.
+attention masks and reference-image layouts. Regenerate caches produced before
+the DiffSynth preprocessing and BF16 alignment. The offline trainer checks the
+cache version and reports when a new embedding run is needed. Use a fresh
+output directory for the new shards and point offline training to that directory.
+Regenerate the cache after changing the images, prompts, resolution, encoder
+weights, dtype or processor. Keep `enable_edit` consistent across both stages.
+Only load caches you produced or trust because the format serializes tensors with pickle.
 
 ## Training semantics and limits
 
 - This integration uses the VAE posterior mode for targets and references.
   Training uses the DiffSynth Flow Matching schedule directly, with uniform
   index sampling from a default 1,000 steps, fixed exponential shift `mu=0.8`,
-  terminal sigma 0.02, and normalized timestep loss weights.
-  The noisy target is `(1-sigma) * latent + sigma * noise`, and the target velocity
-  is `noise - latent`. Loss is FP32 MSE over target tokens, weighted before averaging per sample.
+  terminal sigma 0.02, and normalized timestep loss weights. It rounds the
+  sampled raw timestep to BF16, uses the nearest FP32 schedule point for sigma
+  and loss weight, and divides the rounded time by 1,000 for the DiT.
+  It samples noise in BCHW layout and computes `(1-sigma) * latent + sigma * noise`
+  and the velocity `noise - latent` before packing. The loss applies the sampled
+  weight to FP32 MSE on the BCHW target prediction, then averages per sample.
 - Reference latents stay clean and precede the noisy target. The official
   interleaving, causal text attention, and bidirectional attention within each
   image block are preserved. Reference and text positions receive no direct MSE.
-- Height and width must be positive multiples of 32. Targets use the configured
-  size and `image_resize_mode` (`center_crop` in the examples). References retain
-  aspect ratio near the target area, subject to the processor pixel limits and
-  patch-grid rounding described above. One latent token covers 16 x 16
+- Fixed height and width must be positive multiples of 32. With both unset,
+  each image keeps its aspect ratio up to resizing to fit `max_pixels` and
+  rounding down to multiples of 32. Use fixed dimensions when an image would
+  round down to a zero-width or zero-height crop. One latent token covers 16 x 16
   pixels: a 512 x 512 target contributes 1,024 tokens, in addition to prompt and
   reference-image tokens. VAE latent width is 64; DiT hidden width is 4,096.
 - `max_sequence_length` in the condition config is an optional encoded-prompt
@@ -174,6 +184,13 @@ cases require two devices and compare single-device execution with two-rank
 FSDP2 over two optimizer steps in FP32 and in BF16 with gradient checkpointing.
 These tests check numerical agreement on a tiny model.
 
+An independent CPU comparison against the pinned DiffSynth implementation
+matched the BF16 condition features, clean and noisy latents, sampled time and
+weight, prediction, weighted loss, and parameter gradients exactly on tiny
+text-to-image and two-reference edit cases. Both cases used the same SDPA
+backend, model weights, timestep index, and BCHW noise. The released BF16 VAE
+also matched DiffSynth on 32 x 32 and 64 x 96 RGBA inputs.
+
 The native 7.115B DiT matches all 297 tensor names and shapes in the released
 checkpoint. The earlier Diffusers-backed implementation also ran a 64 x 64
 full-model smoke check on two Ascend 950DT devices (torch/torch-npu 2.10.0,
@@ -187,12 +204,9 @@ If Ascend reports `EI0020` because its default HCCL port is occupied, set
 [HCCL port documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/commlib/hcclug/docs/en/user_guide/hccl_env/HCCL_NPU_SOCKET_PORT_RANGE.md).
 This was required for the validation host; it is separate from the model config.
 
-The DiffSynth recipe follows `FlowMatchScheduler.set_timesteps_qwen_image` and
-`set_training_weight` in [DiffSynth-Studio](https://github.com/modelscope/DiffSynth-Studio/blob/main/diffsynth/diffusion/flow_match.py).
-Schedule construction stays on CPU FP32; sampled times and loss weights stay FP32
-to avoid quantizing timestep lookup through BF16. This aligns the schedule and
-loss equations, not bitwise RNG or all mixed-precision details of another framework.
-Existing raw-posterior embedding caches can be reused. Remove the old
-`training_recipe` field from Qwen-Image 2.1 configs. Runs started with the
-earlier Diffusers schedule should resume on their original code revision to
-preserve the training objective.
+For cross-framework comparisons, use the same weights, prepared sample, sampled
+index, BCHW noise, dtype, and device backend. Set
+`DIFFSYNTH_ATTENTION_IMPLEMENTATION=torch` on the DiffSynth side to match VeOmni's
+SDPA selection. VeOmni uses per-rank generators and FSDP2, so its seed identifies
+a VeOmni run. Resume runs started with the previous preprocessing or timestep
+rules on their original revision to preserve their training inputs.

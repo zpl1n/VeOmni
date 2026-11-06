@@ -1,10 +1,11 @@
+import math
 from io import BytesIO
 
-import PIL
+import PIL.Image
 import requests
 
 from ...data_transform import DATA_TRANSFORM_REGISTRY
-from ..image_utils import fetch_images, smart_resize
+from ..image_utils import fetch_images
 from ..preprocess import conv_preprocess
 from ..video_utils import fetch_videos
 
@@ -40,16 +41,64 @@ def load_qwen_image21_rgba(image):
     raise NotImplementedError
 
 
+def resize_qwen_image21_training_image(
+    image: PIL.Image.Image, *, height: int | None = None, width: int | None = None, max_pixels: int = 1048576
+) -> PIL.Image.Image:
+    """Apply the DiffSynth training dataset's RGBA resize and center crop."""
+    import torchvision.transforms.functional as TF
+
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    original_width, original_height = image.size
+    if height is None or width is None:
+        height, width = original_height, original_width
+        if height * width > max_pixels:
+            scale = (height * width / max_pixels) ** 0.5
+            height, width = int(height / scale), int(width / scale)
+        height = height // 32 * 32
+        width = width // 32 * 32
+        if not height or not width:
+            raise ValueError("Image is too small after DiffSynth's 32-pixel rounding. Set a fixed height and width.")
+
+    scale = max(width / original_width, height / original_height)
+    image = TF.resize(
+        image,
+        (round(original_height * scale), round(original_width * scale)),
+        interpolation=TF.InterpolationMode.BILINEAR,
+    )
+    return TF.center_crop(image, (height, width))
+
+
+def resize_qwen_image21_reference_image(
+    image: PIL.Image.Image, *, target_size: tuple[int, int], min_pixels: int | None
+) -> PIL.Image.Image:
+    """Apply the DiffSynth edit unit's second resize to a crop-processed reference."""
+    target_width, target_height = target_size
+    ratio = image.width / image.height
+    width = math.sqrt(target_width * target_height * ratio)
+    height = width / ratio
+    width = round(width / 32) * 32
+    height = round(height / 32) * 32
+    if not width or not height:
+        raise ValueError(
+            "Reference is too narrow after DiffSynth's 32-pixel rounding. Increase the target resolution."
+        )
+    if min_pixels is not None and width * height < min_pixels:
+        scale = math.sqrt(min_pixels / (width * height))
+        width = math.ceil(width * scale / 32) * 32
+        height = math.ceil(height * scale / 32) * 32
+    return image.resize((width, height), resample=PIL.Image.Resampling.LANCZOS)
+
+
 @DATA_TRANSFORM_REGISTRY.register("qwen_image21_online")
 def process_qwen_image21_online_example(example, source_name, **kwargs):
-    """Load RGBA images using a model-specific path, preserving shared RGB loaders."""
+    """Load RGBA images for resizing with the condition model's training geometry."""
     inputs, outputs, images, videos = conv_preprocess(source=source_name, conversations=example, **kwargs)
     if kwargs.get("use_audio_in_video", False):
         raise NotImplementedError("Audio in video is not supported yet for dit training.")
     videos, _ = fetch_videos(videos, use_audio_in_video=False, **kwargs)
     images = [load_qwen_image21_rgba(image) for image in images]
     images = images[: kwargs.get("max_image_nums", len(images))]
-    images = [smart_resize(image, **kwargs) for image in images]
     return [{"inputs": inputs, "outputs": outputs, "images": images, "videos": videos}]
 
 

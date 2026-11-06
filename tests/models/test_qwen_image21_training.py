@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -63,6 +64,7 @@ from veomni.utils.device import get_device_type
 
 ROOT = Path(__file__).resolve().parents[2]
 _TWO_RANKS = LaunchSpec(nproc=2)
+_CPU_LAUNCH = LaunchSpec(device="cpu")
 
 
 @pytest.fixture(scope="module")
@@ -172,7 +174,7 @@ def snapshot(tmp_path_factory, cpu_rank):
     return root
 
 
-def condition_model(snapshot, *, edit=False, offline=False, steps=16):
+def condition_model(snapshot, *, edit=False, offline=False, steps=16, dtype="float32"):
     config = QwenImage21ConditionModelConfig(
         base_model_path=str(snapshot),
         height=32,
@@ -180,8 +182,8 @@ def condition_model(snapshot, *, edit=False, offline=False, steps=16):
         num_train_timesteps=steps,
         enable_edit=edit,
         seed=77,
-        text_encoder_dtype="float32",
-        vae_dtype="float32",
+        text_encoder_dtype=dtype,
+        vae_dtype=dtype,
     )
     return QwenImage21ConditionModel(config, meta_init=offline).requires_grad_(False).eval()
 
@@ -235,19 +237,22 @@ def assert_tree_equal(actual, expected):
 
 
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "edit"])
-def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit):
+@pytest.mark.parametrize("dtype", ["float32", "bfloat16"])
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit, dtype):
     batch = raw_batch(tmp_path, edit)
     assert all(image.mode == "RGBA" for image in batch["images"][0])
     assert batch["images"][0][-1].getpixel((0, 0))[3] == 64
     if edit:
         assert batch["images"][0][0].getpixel((0, 0))[3] == 128
-    online = condition_model(snapshot, edit=edit)
+    online = condition_model(snapshot, edit=edit, dtype=dtype)
     start_rng = online.rng_state_dict()
     encoded = online.get_condition(**batch)
     assert_tree_equal(online.rng_state_dict(), start_rng)
     assert encoded["latents"][0].shape == (1, 128, 1, 2, 2)
+    assert encoded["latents"][0].dtype == encoded["encoder_hidden_states"][0].dtype == getattr(torch, dtype)
     assert int(encoded["img_mask"][0].sum()) == int(edit)
-    # Existing caches were generated with the upstream pipeline's prompt encoder.
+    # The published pipeline also extracts pre-norm features for short prompts.
     reference_pipeline = QwenImage21Pipeline(
         scheduler=FlowMatchEulerDiscreteScheduler(),
         vae=online.vae,
@@ -255,7 +260,8 @@ def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit):
         processor=online.processor,
         transformer=None,
     )
-    references = [online._prepare_image(image, reference=True) for image in batch["images"][0][:-1]]
+    target_size = online._prepare_image(batch["images"][0][-1]).size
+    references = [online._prepare_image(image, target_size=target_size) for image in batch["images"][0][:-1]]
     with torch.no_grad():
         reference_prompt = reference_pipeline.encode_prompt("a red square", image=references or None, device="cpu")
     assert_tree_equal(
@@ -287,19 +293,32 @@ def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit):
     offline.load_rng_state_dict(next_rng)
     assert_tree_equal(offline.process_condition(**restored), next_batch)
     posterior_mode = encoded["latents"][0][:, :64]
-    normalized = ((posterior_mode - 0.1) / 1.5).flatten(2).transpose(1, 2)
+    mean, std = posterior_mode.new_tensor(0.1), posterior_mode.new_tensor(1.5)
+    normalized = ((posterior_mode - mean) / std).flatten(2).transpose(1, 2)
     torch.testing.assert_close(actual["latents"][0], normalized)
     assert actual["training_target"][0].shape == normalized.shape
-    # The same flow-matching identity holds with a clean reference prefix present.
+    # Recreate DiffSynth's BF16 time lookup and BCHW noise draw with the saved RNG.
     noisy_target = actual["hidden_states"][0][:, -4:]
-    sigma = actual["timestep"][0].view(1, 1, 1)
-    torch.testing.assert_close(noisy_target, normalized + sigma * actual["training_target"][0])
+    sigmas, timesteps, weights = reference_schedule(16)
+    index = torch.randint(16, (1,), generator=torch.Generator().set_state(start_rng["timestep_generator"]))
+    time = timesteps[index].to(torch.bfloat16)
+    nearest = (timesteps - time).abs().argmin()
+    sigma = sigmas[nearest]
+    clean = normalized.transpose(1, 2).unflatten(2, (2, 2))
+    with torch.random.fork_rng(devices=[]):
+        torch.set_rng_state(start_rng["generator"])
+        noise = torch.randn_like(clean)
+    assert_tree_equal(noisy_target, ((1 - sigma) * clean + sigma * noise).flatten(2).transpose(1, 2))
+    assert_tree_equal(actual["training_target"][0], (noise - clean).flatten(2).transpose(1, 2))
+    assert_tree_equal(actual["timestep"][0], time / 1000)
+    assert_tree_equal(actual["loss_weight"][0], weights[nearest])
     if edit:
-        reference = ((encoded["edit_latents"][0][0][:, :64] - 0.1) / 1.5).flatten(2).transpose(1, 2)
+        reference = ((encoded["edit_latents"][0][0][:, :64] - mean) / std).flatten(2).transpose(1, 2)
         torch.testing.assert_close(actual["hidden_states"][0][:, :4], reference)
     assert int(actual["img_mask"][0].sum()) * 4 == actual["hidden_states"][0].shape[1]
 
 
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
 def test_offline_needs_only_component_metadata(snapshot, tmp_path):
     (tmp_path / "vae").mkdir()
     shutil.copyfile(snapshot / "vae" / "config.json", tmp_path / "vae" / "config.json")
@@ -307,6 +326,11 @@ def test_offline_needs_only_component_metadata(snapshot, tmp_path):
     assert offline.text_encoder is None and offline.vae is None
     with pytest.raises(RuntimeError, match="offline_embedding"):
         offline.get_condition(inputs=["test"], images=[[Image.new("RGBA", (32, 32))]])
+    online = condition_model(snapshot)
+    legacy_cache = online.get_condition(inputs=["test"], images=[[Image.new("RGBA", (32, 32))]])
+    legacy_cache.pop("condition_version")
+    with pytest.raises(ValueError, match="Regenerate it with offline_embedding"):
+        offline.process_condition(**legacy_cache)
 
 
 def test_legacy_condition_config_has_no_recipe_selector(tmp_path):
@@ -419,42 +443,60 @@ def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
 
 
 @pytest.mark.parametrize(
-    ("resolution", "reference_size", "pixel_limits", "expected_size"),
+    ("resolution", "reference_size", "pixel_limits", "fixed", "expected_size"),
     [
-        (64, (64, 64), (65536, 16777216), (256, 256)),
-        (64, (96, 32), (65536, 16777216), (448, 160)),
-        (512, (96, 64), (65536, 16777216), (640, 416)),
-        (1024, (96, 32), (1024, 65536), (416, 128)),
+        (64, (96, 32), (65536, 16777216), True, (256, 256)),
+        (64, (96, 32), (65536, 16777216), False, (448, 160)),
+        (512, (96, 64), (65536, 16777216), False, (640, 416)),
+        (1024, (96, 32), (1024, 65536), False, (1760, 576)),
     ],
 )
-def test_reference_resize_matches_processor_grid(snapshot, resolution, reference_size, pixel_limits, expected_size):
-    """VL and RGBA VAE must share the exact grid, including budget-rounding edges."""
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_reference_resize_uses_target_area_and_processor_minimum(
+    snapshot, resolution, reference_size, pixel_limits, fixed, expected_size
+):
+    """DiffSynth first crops the reference, then resizes it against the target area."""
     model = condition_model(snapshot, edit=True)
-    model.config.height = model.config.width = resolution
-    processor = model.processor.image_processor
-    processor.size = {"shortest_edge": pixel_limits[0], "longest_edge": pixel_limits[1]}
+    model.config.height = model.config.width = resolution if fixed else None
+    model.processor.image_processor.size = {"shortest_edge": pixel_limits[0], "longest_edge": pixel_limits[1]}
     reference = Image.new("RGBA", reference_size, (100, 30, 20, 64))
-    prepared = model._prepare_image(reference, reference=True)
+    target = model._prepare_image(Image.new("RGBA", (resolution, resolution)))
+    prepared = model._prepare_image(reference, target_size=target.size)
     assert prepared.mode == "RGBA"
     assert prepared.size == expected_size
     assert prepared.getchannel("A").getextrema() == (64, 64)
-    # The processor must leave this spatial grid unchanged when it sees the
-    # white-composited RGB copy; otherwise image slots and VAE latents disagree.
-    vision = processor(images=[prepared.convert("RGB")], return_tensors="pt")
-    height, width = vision["image_grid_thw"][0, 1:].tolist()
-    assert (width * processor.patch_size, height * processor.patch_size) == prepared.size
-    parameters, shape = model._encode_image(prepared)
-    assert shape == (1, prepared.height // 16, prepared.width // 16)
-    assert parameters.shape[-2:] == shape[-2:]
-    assert model._prepare_image(reference).size == (resolution, resolution)
+    assert target.size == (resolution, resolution)
 
 
-@pytest.mark.parametrize("steps", [16, 1000])
-def test_diffsynth_training_schedule_and_weight(snapshot, steps):
-    model = condition_model(snapshot, offline=True, steps=steps)
-    # Independent reference equations from DiffSynth FlowMatchScheduler.
-    import math
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_overflow_prompt_preserves_image_slots_and_assistant_suffix(snapshot, monkeypatch):
+    model = condition_model(snapshot, edit=True)
+    references = [Image.new("RGBA", (32, 32), (30, 60, 90, alpha)) for alpha in (63, 127)]
+    shapes = [(1, 2, 2)] * 2
+    prompt = "a red boat near the reef " * 5
+    recorded_inputs = []
 
+    def record_inputs(_module, _args, kwargs):
+        recorded_inputs.append((kwargs["input_ids"].clone(), kwargs["attention_mask"].clone()))
+
+    with model.text_encoder.model.register_forward_pre_hook(record_inputs, with_kwargs=True):
+        model._encode_prompt(prompt, references, shapes)
+        monkeypatch.setattr(modeling_qwen_image21_condition, "_MAX_TEXT_POSITIONS", 64)
+        embeddings, image_mask = model._encode_prompt(prompt, references, shapes)
+
+    (full_ids, full_mask), (trimmed_ids, trimmed_mask) = recorded_inputs
+    assert_tree_equal(trimmed_ids, full_ids)
+    image_slots = full_ids.eq(model._image_token_id)
+    assert int(image_mask.sum()) == int(image_slots.sum()) == len(references)
+    assert trimmed_mask[image_slots].all()
+    assert trimmed_mask[:, : model._system_tokens].all()
+    assert trimmed_mask[:, -model._tail_tokens :].all()
+    assert int(trimmed_mask.sum()) < int(full_mask.sum())
+    assert embeddings.shape[1] - int(image_mask.sum()) == 64 - 1 - sum(max(h, w) for _, h, w in shapes)
+
+
+def reference_schedule(steps):
+    """DiffSynth FlowMatchScheduler's qwen_image grid and training curve."""
     reference = torch.linspace(1, 0, steps + 1)[:-1]
     reference = math.exp(0.8) / (math.exp(0.8) + (1 / reference - 1))
     scale = (1 - reference[-1]) / 0.98
@@ -465,9 +507,39 @@ def test_diffsynth_training_schedule_and_weight(snapshot, steps):
     if steps != 1000:
         weights *= steps / 1000
         weights += weights[1].clone()
+    return reference, reference * 1000, weights
+
+
+@pytest.mark.parametrize("steps", [16, 1000])
+def test_diffsynth_training_schedule_and_weight(snapshot, steps):
+    model = condition_model(snapshot, offline=True, steps=steps)
+    reference, timesteps, weights = reference_schedule(steps)
     torch.testing.assert_close(model._sigmas, reference, atol=0, rtol=0)
-    torch.testing.assert_close(model._timesteps, reference * 1000, atol=0, rtol=0)
+    torch.testing.assert_close(model._timesteps, timesteps, atol=0, rtol=0)
     torch.testing.assert_close(model._loss_weights, weights, atol=0, rtol=0)
+
+
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_diffsynth_bf16_timestep_lookup_and_noisy_latents(snapshot, monkeypatch):
+    condition = condition_model(snapshot, offline=True, steps=1000)
+    index = torch.tensor([100])
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: index)
+    clean = torch.linspace(-1, 1, 64 * 2 * 4).reshape(1, 64, 2, 4).to(torch.bfloat16)
+    state = condition.generator.get_state()
+    noisy, velocity, time, weight = condition._sample_training_inputs(clean.flatten(2).transpose(1, 2), (1, 2, 4))
+
+    sigmas, times, weights = reference_schedule(1000)
+    rounded_time = times[index].to(torch.bfloat16)
+    nearest = (times - rounded_time).abs().argmin()
+    assert nearest.item() != index.item()
+    with torch.random.fork_rng(devices=[]):
+        torch.set_rng_state(state)
+        noise = torch.randn_like(clean)
+    sigma = sigmas[nearest]
+    assert_tree_equal(noisy.transpose(1, 2).reshape_as(clean), (1 - sigma) * clean + sigma * noise)
+    assert_tree_equal(velocity.transpose(1, 2).reshape_as(clean), noise - clean)
+    assert_tree_equal(time, rounded_time / 1000)
+    assert_tree_equal(weight, weights[nearest])
 
 
 def test_diffsynth_weight_flows_from_condition_to_training(snapshot):

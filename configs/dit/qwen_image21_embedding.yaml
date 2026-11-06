@@ -4,13 +4,11 @@ model:
   config_path: /path/to/Qwen-Image-2.1/transformer/config.json
   condition_model_path: /path/to/Qwen-Image-2.1
   condition_model_cfg:
-    height: 512
-    width: 512
+    max_pixels: 1048576
     enable_edit: false
-    image_resize_mode: center_crop
     text_encoder_attn_implementation: sdpa
     text_encoder_dtype: bfloat16
-    vae_dtype: float32
+    vae_dtype: bfloat16
   ops_implementation:
     attn_implementation: sdpa
     rotary_pos_emb_implementation: eager
