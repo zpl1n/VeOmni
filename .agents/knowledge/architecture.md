@@ -95,8 +95,9 @@ DiT with official checkpoint keys, model-local block-causal attention, and
 real-valued NPU rotary embeddings. Its `qwen_image21_condition/` package directly
 encodes inputs with Qwen3-VL and the RGBA VAE and prepares Flow Matching inputs
 for both online and cached offline training. `qwen_image21_online` preserves
-image alpha. The standard `DiTTrainer` handles all three stages, and training
-uses FSDP2 with complete token sequences on each data-parallel rank. See
+image alpha. The standard `DiTTrainer` handles all three stages. Training uses
+FSDP2 and optionally shards the DiT joint sequence with Ulysses, CP, or their
+combined topology (`enable_usp`). CP all-gathers K/V within each head shard. See
 `docs/examples/qwen_image21.md`.
 
 ### FlexAttention package

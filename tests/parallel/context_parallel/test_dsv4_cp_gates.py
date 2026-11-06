@@ -58,7 +58,7 @@ def test_gate_rejects_context_parallel_on_npu(monkeypatch, model_type):
     monkeypatch.setattr(
         auto_module,
         "get_parallel_state",
-        lambda: SimpleNamespace(cp_enabled=True),
+        lambda: SimpleNamespace(cp_enabled=True, ulysses_enabled=False),
     )
     monkeypatch.setattr(auto_module, "IS_NPU_AVAILABLE", True)
 
@@ -72,7 +72,7 @@ def test_gate_allows_context_parallel_models_on_gpu(monkeypatch, model_type):
     monkeypatch.setattr(
         auto_module,
         "get_parallel_state",
-        lambda: SimpleNamespace(cp_enabled=True),
+        lambda: SimpleNamespace(cp_enabled=True, ulysses_enabled=False),
     )
     monkeypatch.setattr(auto_module, "IS_NPU_AVAILABLE", False)
 
@@ -88,7 +88,7 @@ def test_gate_allows_seed_omni_module_config_under_cp(monkeypatch):
     monkeypatch.setattr(
         auto_module,
         "get_parallel_state",
-        lambda: SimpleNamespace(cp_enabled=True),
+        lambda: SimpleNamespace(cp_enabled=True, ulysses_enabled=False),
     )
     monkeypatch.setattr(auto_module, "IS_NPU_AVAILABLE", False)
 

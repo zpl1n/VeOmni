@@ -639,12 +639,12 @@ class DiTTrainer:
             self.on_epoch_end()
             self.base.start_step = 0
             helper.print_device_mem_info(f"VRAM usage after epoch {epoch + 1}")
-            if args.data.dataloader.use_background_prefetcher:
+            if args.data.dataloader.use_background_prefetcher and self.base.data_iterator is not None:
                 self.base.data_iterator.stop()
 
         self.on_train_end()
 
-        if args.data.dataloader.use_background_prefetcher:
+        if args.data.dataloader.use_background_prefetcher and getattr(self.base, "data_iterator", None) is not None:
             self.base.data_iterator.stop()
 
         synchronize()

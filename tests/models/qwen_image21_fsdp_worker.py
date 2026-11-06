@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Two-rank worker comparing a tiny DiT's actual accelerator and FSDP2 training math."""
+"""Distributed Qwen-Image 2.1 gradient and optimizer-update parity worker."""
 
 from __future__ import annotations
 
@@ -32,7 +32,12 @@ from torch.distributed.tensor import DTensor
 
 from tests.models.diffusers.test_qwen_image21 import sample_inputs, tiny_config, tiny_ops
 from veomni.arguments.arguments_types import AcceleratorConfig, MixedPrecisionConfig
-from veomni.distributed.parallel_state import clear_parallel_state, init_parallel_state_from_config, use_parallel_state
+from veomni.distributed.parallel_state import (
+    clear_parallel_state,
+    get_parallel_state,
+    init_parallel_state_from_config,
+    use_parallel_state,
+)
 from veomni.distributed.torch_parallelize import build_parallelize_model
 from veomni.models import build_foundation_model
 from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen_image21_transformer import (
@@ -65,15 +70,113 @@ def reference_forward(model, samples, targets):
     return predictions, loss
 
 
-def candidate_forward(model, samples, targets):
-    result = model(**{key: [sample[key] for sample in samples] for key in samples[0]}, training_target=targets)
+def candidate_forward(model, samples, targets, weights=None):
+    result = model(
+        **{key: [sample[key] for sample in samples] for key in samples[0]},
+        training_target=targets,
+        loss_weight=weights,
+    )
     return result.predictions, result.loss["mse_loss"]
 
 
+def parallel_config(world_size, ulysses, cp):
+    return AcceleratorConfig(
+        dp_replicate_size=1,
+        dp_shard_size=world_size // (ulysses * cp),
+        ulysses_size=ulysses,
+        cp_size=cp,
+        enable_usp=ulysses > 1 and cp > 1,
+    )
+
+
+def run_cpu_usp():
+    torch.set_num_threads(1)
+    torch.utils.checkpoint.DefaultDeviceType.set_device_type("cpu")
+    torch.distributed.init_process_group("gloo")
+    world = torch.distributed.get_world_size()
+    assert world == 4
+    try:
+        init_parallel_state_from_config(parallel_config(world, 1, 1), name="reference")
+        for ulysses, cp in [(2, 1), (1, 2), (2, 2)]:
+            name = f"u{ulysses}-cp{cp}"
+            init_parallel_state_from_config(parallel_config(world, ulysses, cp), name=name)
+            torch.manual_seed(427)
+            with use_parallel_state("reference"):
+                reference = QwenImage21Transformer2DModel(tiny_config()).train()
+            with use_parallel_state(name):
+                state = get_parallel_state()
+                candidate = QwenImage21Transformer2DModel(tiny_config()).train()
+            candidate.load_state_dict(reference.state_dict(), strict=True)
+            if ulysses > 1 and cp > 1:
+                candidate.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            ref_optimizer = torch.optim.SGD(reference.parameters(), lr=0.01, foreach=False)
+            optimizer = torch.optim.SGD(candidate.parameters(), lr=0.01, foreach=False)
+            local_lengths = []
+            candidate.transformer_blocks[0].register_forward_pre_hook(
+                lambda _module, args, lengths=local_lengths: lengths.append(args[0].shape[1])
+            )
+            for step in range(2):
+                ref_optimizer.zero_grad(set_to_none=True)
+                optimizer.zero_grad(set_to_none=True)
+                # Only ranks processing the same DP sample share these inputs.
+                torch.manual_seed(80 + step * world + state.dp_rank)
+                text, edit = [sample_inputs(edit, requires_grad=False) for edit in (False, True)]
+                text["hidden_states"] = text["hidden_states"][:, :4]
+                text["img_shapes"] = [[(1, 2, 2)]]
+                # Five joint tokens over four ranks leave one entirely padded shard.
+                text["encoder_hidden_states"] = text["encoder_hidden_states"][:, :1]
+                text["encoder_hidden_states_mask"] = text["encoder_hidden_states_mask"][:, :1]
+                text["img_mask"] = text["img_mask"][:, 2:-1]
+                samples = [text, edit]
+                targets = [torch.randn(1, prod(sample["img_shapes"][0][-1]), 8) for sample in samples]
+                weights = [torch.tensor(0.7), torch.tensor(1.3)]
+                with use_parallel_state("reference"):
+                    expected_predictions, expected_loss = candidate_forward(reference, samples, targets, weights)
+                    expected_loss.backward()
+                with use_parallel_state(name):
+                    local_lengths.clear()
+                    predictions, loss = candidate_forward(candidate, samples, targets, weights)
+                    assert local_lengths == [
+                        (sample["hidden_states"].shape[1] + int((~sample["img_mask"]).sum()) + state.sp_size - 1)
+                        // state.sp_size
+                        for sample in samples
+                    ]
+                    torch.testing.assert_close(loss, expected_loss, atol=3e-6, rtol=3e-5, msg=name)
+                    for actual, expected in zip(predictions, expected_predictions, strict=True):
+                        torch.testing.assert_close(actual, expected, atol=3e-6, rtol=3e-5, msg=name)
+                    loss.backward()
+                reference_params = dict(reference.named_parameters())
+                for key, parameter in candidate.named_parameters():
+                    expected = reference_params[key]
+                    # FSDP2 averages across DP and SP. Reproduce that reduction
+                    # here so a missing SP loss gradient scale fails on CPU.
+                    for gradient in (parameter.grad, expected.grad):
+                        assert gradient is not None and torch.isfinite(gradient).all(), (name, key)
+                        torch.distributed.all_reduce(gradient, group=state.fsdp_group)
+                        gradient.div_(world)
+                    torch.testing.assert_close(
+                        parameter.grad, expected.grad, atol=5e-6, rtol=5e-5, msg=f"{name}: {key}"
+                    )
+                optimizer.step()
+                ref_optimizer.step()
+                for key, parameter in candidate.named_parameters():
+                    torch.testing.assert_close(
+                        parameter, reference_params[key], atol=3e-6, rtol=3e-5, msg=f"{name}: update {step}: {key}"
+                    )
+    finally:
+        torch.distributed.destroy_process_group()
+        clear_parallel_state()
+
+
 def main(output_dir, mode):
-    if mode not in ("fp32", "bf16-gc"):
+    if mode == "usp-cpu":
+        with patch("veomni.distributed.parallel_state.get_device_type", return_value="cpu"):
+            run_cpu_usp()
+        return
+    if mode not in ("fp32", "bf16-gc", "usp-fp32", "usp-bf16-gc"):
         raise ValueError(f"Unknown precision mode: {mode}")
-    bf16 = mode == "bf16-gc"
+    bf16 = mode.endswith("bf16-gc")
+    usp = mode.startswith("usp-")
     device = get_device_type()
     if device not in ("cuda", "npu"):
         raise RuntimeError("This worker requires real accelerator execution; no CPU fallback is allowed.")
@@ -82,9 +185,10 @@ def main(output_dir, mode):
     torch.distributed.init_process_group(get_dist_comm_backend())
     rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
-    if world_size != 2:
-        raise ValueError("The FSDP2 regression uses exactly two ranks.")
-    init_parallel_state_from_config(AcceleratorConfig(dp_replicate_size=1, dp_shard_size=world_size), name="base")
+    assert world_size == (4 if usp else 2)
+    init_parallel_state_from_config(parallel_config(world_size, 1, 1), name="base")
+    if usp:
+        init_parallel_state_from_config(parallel_config(world_size, 2, 2), name="usp")
     try:
         with use_parallel_state("base"):
             torch.manual_seed(427)
@@ -110,23 +214,42 @@ def main(output_dir, mode):
                 for block in unsharded.transformer_blocks:
                     fully_shard(block, mesh=singleton_mesh, mp_policy=policy)
                 fully_shard(unsharded, mesh=singleton_mesh, mp_policy=policy)
-            sharded = build_foundation_model(
-                str(checkpoint),
-                init_device="meta",
-                torch_dtype="float32",
-                ops_implementation=tiny_ops(),
-            )
-            sharded = build_parallelize_model(
-                sharded,
-                weights_path=str(checkpoint),
-                init_device="meta",
-                mixed_precision=MixedPrecisionConfig(enable=bf16, cast_forward_inputs=False),
-                enable_gradient_checkpointing=bf16,
-                enable_reshard_after_forward=True,
-            ).train()
+            with use_parallel_state("usp" if usp else "base"):
+                sharded = build_foundation_model(
+                    str(checkpoint),
+                    init_device="meta",
+                    torch_dtype="float32",
+                    ops_implementation=tiny_ops(),
+                )
+                sharded = build_parallelize_model(
+                    sharded,
+                    weights_path=str(checkpoint),
+                    init_device="meta",
+                    mixed_precision=MixedPrecisionConfig(enable=bf16, cast_forward_inputs=False),
+                    enable_gradient_checkpointing=bf16,
+                    enable_reshard_after_forward=True,
+                ).train()
             if bf16:
                 assert unsharded.gradient_checkpointing and sharded.gradient_checkpointing
             assert any(isinstance(parameter, DTensor) for parameter in sharded.parameters())
+            bf16_usp = bf16 and usp
+            max_relative_l2 = 0.0
+
+            def compare(actual, expected, name):
+                nonlocal max_relative_l2
+                if not bf16_usp:
+                    torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-4, msg=name)
+                    return
+                # BF16 activation gradients are rounded before the FP32 FSDP
+                # reduction. Sequence slicing changes that accumulation order.
+                actual, expected = actual.float(), expected.float()
+                difference = actual - expected
+                norm = expected.norm()
+                relative = float(difference.norm() / norm.clamp_min(1e-12))
+                max_relative_l2 = max(max_relative_l2, relative)
+                assert difference.norm() <= 0.02 * norm + 1e-7, (name, relative)
+                assert difference.abs().max() <= 0.02 * expected.abs().max() + 2e-5, name
+
             cpu_samples = [sample_inputs(False, requires_grad=False), sample_inputs(True, requires_grad=False)]
             cpu_targets = [torch.randn(1, prod(sample["img_shapes"][0][-1]), 8) for sample in cpu_samples]
             samples, targets = tree_to(cpu_samples, device), tree_to(cpu_targets, device)
@@ -151,16 +274,18 @@ def main(output_dir, mode):
                         cpu_predictions, cpu_loss = reference_forward(reference, cpu_samples, cpu_targets)
                         cpu_loss.backward()
                 predictions, loss = candidate_forward(unsharded, samples, targets)
-                sharded_predictions, sharded_loss = candidate_forward(sharded, samples, targets)
+                with use_parallel_state("usp" if usp else "base"):
+                    sharded_predictions, sharded_loss = candidate_forward(sharded, samples, targets)
                 if not bf16:
                     torch.testing.assert_close(loss.cpu(), cpu_loss, atol=3e-5, rtol=3e-4)
                     for cpu, plain in zip(cpu_predictions, predictions, strict=True):
                         torch.testing.assert_close(plain.cpu(), cpu, atol=3e-5, rtol=3e-4)
-                torch.testing.assert_close(sharded_loss, loss, atol=2e-5, rtol=2e-4)
+                compare(sharded_loss, loss, "loss")
                 for plain, fsdp in zip(predictions, sharded_predictions, strict=True):
-                    torch.testing.assert_close(fsdp, plain, atol=2e-5, rtol=2e-4)
+                    compare(fsdp, plain, "prediction")
                 loss.backward()
-                sharded_loss.backward()
+                with use_parallel_state("usp" if usp else "base"):
+                    sharded_loss.backward()
                 cpu_parameters = dict(reference.named_parameters())
                 plain_parameters = dict(unsharded.named_parameters())
                 sharded_parameters = dict(sharded.named_parameters())
@@ -181,7 +306,7 @@ def main(output_dir, mode):
                         expected = cpu_parameters[name].grad
                         assert expected is not None, name
                         torch.testing.assert_close(plain_grad, expected, atol=5e-5, rtol=5e-4, msg=name)
-                    torch.testing.assert_close(fsdp_grad, plain_grad, atol=2e-5, rtol=2e-4, msg=name)
+                    compare(fsdp_grad, plain_grad, name)
                 assert nonzero_gradients > 0
                 before = {name: full_cpu(parameter).clone() for name, parameter in plain_parameters.items()}
                 for optimizer in optimizers:
@@ -202,6 +327,7 @@ def main(output_dir, mode):
                             "mode": mode,
                             "upstream_cpu": "covered-by-fp32-case" if bf16 else "PASS",
                             "fsdp2": "PASS",
+                            **({"usp_bf16_max_relative_l2": max_relative_l2} if bf16_usp else {}),
                         }
                     )
                 )

@@ -64,6 +64,8 @@ from veomni.utils.device import get_device_type
 
 ROOT = Path(__file__).resolve().parents[2]
 _TWO_RANKS = LaunchSpec(nproc=2)
+_USP_ACCELERATOR = LaunchSpec(nproc=4)
+_USP_CPU = LaunchSpec(nproc=4, device="cpu")
 _CPU_LAUNCH = LaunchSpec(device="cpu")
 
 
@@ -333,6 +335,15 @@ def test_offline_needs_only_component_metadata(snapshot, tmp_path):
         offline.process_condition(**legacy_cache)
 
 
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_condition_rng_resume_requires_same_sp_group_size(snapshot):
+    model = condition_model(snapshot, offline=True)
+    state = model.rng_state_dict()
+    model.load_rng_state_dict({key: value for key, value in state.items() if key != "sp_size"})
+    with pytest.raises(ValueError, match="different sequence-parallel group size"):
+        model.load_rng_state_dict({**state, "sp_size": 4})
+
+
 def test_legacy_condition_config_has_no_recipe_selector(tmp_path):
     config = QwenImage21ConditionModelConfig.from_pretrained(tmp_path, training_recipe="diffsynth")
     assert "training_recipe" not in config.to_dict()
@@ -401,16 +412,19 @@ def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit
     torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
 
-@pytest.mark.skipif(
-    get_device_type() not in ("cuda", "npu") or runner_device_count() < 2,
-    reason="requires two accelerators for real FSDP2 gradient and update parity",
-)
-@pytest.mark.launch_plan(provider=CasePlan.sequential(_TWO_RANKS))
-@pytest.mark.parametrize("mode", ["fp32", "bf16-gc"])
-def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
+def launch_qwen_image21_worker(tmp_path, mode, launch):
     environment = os.environ.copy()
     for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE", "LOCAL_WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"):
         environment.pop(key, None)
+    if launch.device == "cpu":
+        environment.update(
+            {
+                "CUDA_VISIBLE_DEVICES": "",
+                "ASCEND_RT_VISIBLE_DEVICES": "",
+                "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+                "OMP_NUM_THREADS": "1",
+            }
+        )
     result = subprocess.run(
         [
             sys.executable,
@@ -418,7 +432,7 @@ def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
             "torch.distributed.run",
             "--standalone",
             "--nnodes=1",
-            "--nproc-per-node=2",
+            f"--nproc-per-node={launch.nproc}",
             "-m",
             "tests.models.qwen_image21_fsdp_worker",
             str(tmp_path),
@@ -431,13 +445,48 @@ def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode):
         timeout=300,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.launch_plan(provider=_USP_CPU)
+def test_usp_cpu_predictions_gradients_and_updates(tmp_path):
+    launch_qwen_image21_worker(tmp_path, "usp-cpu", _USP_CPU)
+
+
+@pytest.mark.skipif(
+    get_device_type() not in ("cuda", "npu") or runner_device_count() < 2,
+    reason="requires at least two accelerators for real FSDP2 gradient and update parity",
+)
+@pytest.mark.launch_plan(provider=lambda context: CasePlan.sequential(context.params["launch"]))
+@pytest.mark.parametrize(
+    ("mode", "launch"),
+    [
+        pytest.param("fp32", _TWO_RANKS, id="fp32"),
+        pytest.param("bf16-gc", _TWO_RANKS, id="bf16-gc"),
+        pytest.param(
+            "usp-fp32",
+            _USP_ACCELERATOR,
+            marks=pytest.mark.skipif(runner_device_count() < 4, reason="requires four accelerators for 2x2 USP"),
+            id="usp-fp32",
+        ),
+        pytest.param(
+            "usp-bf16-gc",
+            _USP_ACCELERATOR,
+            marks=pytest.mark.skipif(runner_device_count() < 4, reason="requires four accelerators for 2x2 USP"),
+            id="usp-bf16-gc",
+        ),
+    ],
+)
+def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode, launch):
+    launch_qwen_image21_worker(tmp_path, mode, launch)
     report = json.loads((tmp_path / "result.json").read_text())
+    if mode == "usp-bf16-gc":
+        assert math.isfinite(report.pop("usp_bf16_max_relative_l2"))
     assert report == {
         "device": get_device_type(),
-        "ranks": 2,
+        "ranks": launch.nproc,
         "steps": 2,
         "mode": mode,
-        "upstream_cpu": "covered-by-fp32-case" if mode == "bf16-gc" else "PASS",
+        "upstream_cpu": "covered-by-fp32-case" if mode.endswith("bf16-gc") else "PASS",
         "fsdp2": "PASS",
     }
 

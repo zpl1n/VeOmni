@@ -81,9 +81,10 @@ image slots and assistant suffix, and reads the last layer before final normaliz
 ## Online fine-tuning
 
 The default uses the DiffSynth full-training example's dynamic resolution with
-a 1,048,576-pixel cap. To start with a fixed 512 x 512 crop, set both
-`--model.condition_model_cfg.height 512` and `--model.condition_model_cfg.width 512`.
-For online training, adjust the paths in this command.
+a 1,048,576-pixel cap. For a fixed 512 x 512 crop, set both `height` and `width`
+under `model.condition_model_cfg` in the YAML.
+Set `data.mm_configs.data_dir` to your image directory in the YAML. For online
+training, adjust the remaining paths in this command.
 
 ```bash
 MODEL=/path/to/Qwen-Image-2.1
@@ -92,17 +93,44 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NPROC_PER_NODE=8 NNODES=1 \
   --model.model_path "$MODEL/transformer" \
   --model.config_path "$MODEL/transformer/config.json" \
   --model.condition_model_path "$MODEL" \
-  --data.train_path /path/to/train.jsonl \
-  --data.mm_configs.data_dir /path/to/images
+  --data.train_path /path/to/train.jsonl
 ```
 
 The example uses FSDP2, BF16 computation with FP32 gradient reduction, gradient
-checkpointing, micro batch size 1, and global batch size 8. Each rank processes
-the complete sequence for its samples. Use the accelerator defaults
-(`ulysses_size=1` and `cp_size=1`). Global batch size must be divisible by
-`micro_batch_size * dp_size`. Reduce target resolution
-before attempting larger batches. Both the frozen encoders and training state
-consume accelerator memory in online mode.
+checkpointing, micro batch size 1, and global batch size 8. Both the frozen
+encoders and training state consume accelerator memory in online mode.
+
+## Unified sequence parallelism
+
+The training examples default to complete sequences on each rank. For long
+sequences, Qwen-Image 2.1 supports synchronous Ulysses, context parallelism
+(CP), and their combined topology (USP). On eight devices, add these overrides
+to the online or offline training command:
+
+```bash
+  --model.accelerator.enable_usp true \
+  --model.accelerator.ulysses_size 2 \
+  --model.accelerator.cp_size 2 \
+  --train.global_batch_size 2
+```
+
+This processes two samples per micro step, each shared by four sequence-parallel
+ranks. Global batch size must be divisible by
+`micro_batch_size * dp_size`, where `dp_size = world_size / (ulysses_size * cp_size)`.
+Keep the global batch size at 8 to accumulate four micro batches per rank in
+this example. The number of attention heads must be divisible by
+`ulysses_size`. Set either axis to 1 to run the other by itself.
+
+Each rank runs the DiT blocks on a shard of the joint image and text sequence.
+Ulysses exchanges sequence chunks for attention heads. CP keeps query rows
+local and all-gathers the corresponding K/V across its ranks. The DiT applies
+the original block-causal mask and gathers target predictions for the weighted
+loss. Each online sequence-parallel peer runs the frozen condition encoders
+for its group's sample. Embedding can be run with the original topology
+because the cached conditions store full samples.
+Keep the same sequence-parallel group size when resuming a training checkpoint
+so each group continues to share a noise and timestep stream. When changing
+the group size, start a new run from the exported model weights.
 
 ## Embedding then offline training
 
@@ -180,9 +208,11 @@ pytest -q tests/models/diffusers/test_qwen_image21.py \
 They compare upstream predictions and input/parameter gradients, strict checkpoint
 loading and save/reload, RGBA preprocessing, real Qwen3-VL/VAE encoding, cache and
 RNG restoration, and an optimizer step through the DiT trainer. The accelerator
-cases require two devices and compare single-device execution with two-rank
-FSDP2 over two optimizer steps in FP32 and in BF16 with gradient checkpointing.
-These tests check numerical agreement on a tiny model.
+cases compare single-device execution with FSDP2 over two optimizer steps in
+FP32 and in BF16 with gradient checkpointing. They use two devices for plain
+FSDP2 and four for USP. The four-process CPU test also compares Ulysses, CP, and
+combined USP with the unsharded model, including padding, weighted loss,
+parameter gradients, and updates.
 
 An independent CPU comparison against the pinned DiffSynth implementation
 matched the BF16 condition features, clean and noisy latents, sampled time and
@@ -196,8 +226,10 @@ checkpoint. The earlier Diffusers-backed implementation also ran a 64 x 64
 full-model smoke check on two Ascend 950DT devices (torch/torch-npu 2.10.0,
 Diffusers 0.41.0, Transformers 5.16.1), including real Qwen3-VL/VAE encoding
 for generation and editing and one AdamW update with FSDP2, BF16 computation,
-and gradient checkpointing. The native model's full-resolution throughput,
-memory requirements, and image quality have yet to be measured.
+and gradient checkpointing. The native model also completed a 64 x 64 online
+AdamW update with the released weights, BF16, FSDP2, and 2 x 2 USP on four
+Ascend 950DT devices. Full-resolution throughput, memory requirements, and
+image quality have yet to be measured.
 
 If Ascend reports `EI0020` because its default HCCL port is occupied, set
 `HCCL_NPU_SOCKET_PORT_RANGE=auto` in the launch environment, as described in the

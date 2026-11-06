@@ -25,6 +25,7 @@ model:
     weight_decay: 0.01
     max_grad_norm: 1.0
   accelerator:
+    # For combined Ulysses and CP, set enable_usp: true, ulysses_size and cp_size.
     init_device: meta
     gradient_checkpointing:
       enable: true

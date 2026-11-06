@@ -39,6 +39,12 @@ from transformers.modeling_outputs import ModelOutput
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, cached_file
 
 from veomni.distributed.parallel_state import get_parallel_state
+from veomni.distributed.sequence_parallel import (
+    gather_heads_scatter_seq,
+    gather_outputs,
+    gather_seq_scatter_heads,
+    slice_input_tensor,
+)
 from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.ops import VeomniOp
 
@@ -222,14 +228,24 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         text_positions = (~image_mask).nonzero(as_tuple=True)[0]
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
+    parallel = get_parallel_state()
+    if parallel.sp_enabled:
+        joint = slice_input_tensor(joint, dim=1)
+        rotary = slice_input_tensor(rotary, dim=0)
+        if modulation_mask is not None:
+            modulation_mask = slice_input_tensor(modulation_mask, dim=0)
     for block in model.transformer_blocks:
-        args = (joint, modulation, rotary, modulation_mask, segments, key_valid)
+        args = (joint, modulation, rotary, modulation_mask, segments, key_valid, length)
         if torch.is_grad_enabled() and model.gradient_checkpointing:
             joint = model._gradient_checkpointing_func(block, *args)
         else:
             joint = block(*args)
     output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
-    return output[:, prefix_length:]
+    if parallel.sp_enabled:
+        # Every SP rank computes the full loss. Gather backward sums its
+        # replicated gradients before FSDP averages over DP and SP ranks.
+        output = gather_outputs(output, gather_dim=1, group=parallel.sp_group)
+    return output[:, prefix_length:length]
 
 
 def eager_attention_forward(module, query, key, value, attention_mask, scaling=None, dropout=0.0, **kwargs):
@@ -278,25 +294,54 @@ class QwenImage21Attention(nn.Module):
             mask,
             dropout=0.0,
             is_causal=False,
+            skip_ulysses=True,
         )[0]
 
-    def forward(self, hidden_states, rotary, segments, key_valid):
+    def forward(self, hidden_states, rotary, segments, key_valid, sequence_length):
         query = self.to_q(hidden_states).unflatten(-1, (self.heads, -1))
         key = self.to_k(hidden_states).unflatten(-1, (self.heads, -1))
         value = self.to_v(hidden_states).unflatten(-1, (self.heads, -1))
         query = apply_rotary(self.norm_q(query).to(value.dtype), rotary)
         key = apply_rotary(self.norm_k(key).to(value.dtype), rotary)
+        parallel = get_parallel_state()
+        if parallel.ulysses_enabled:
+            # Exchange sequence for heads within a CP shard. Keep Q/K/V in
+            # one collective so their backward exchanges stay in lockstep.
+            qkv = torch.stack((query, key, value), dim=0).permute(3, 2, 0, 1, 4)
+            qkv = gather_seq_scatter_heads(qkv, seq_dim=1, head_dim=0, group=parallel.ulysses_group)
+            query, key, value = qkv.permute(2, 3, 1, 0, 4).unbind(0)
+        query_start = 0
+        if parallel.cp_enabled:
+            # CP keeps the local query rows and shares head-local K/V.
+            kv = torch.stack((key, value), dim=2)
+            key, value = gather_outputs(kv, gather_dim=1, group=parallel.cp_group).unbind(2)
+            query_start = parallel.cp_rank * query.shape[1]
+        query_end = query_start + query.shape[1]
         prefix_length = segments[-1][1] if segments else 0
         outputs = []
         for start, end, is_text in [*segments, (prefix_length, key.shape[1], False)]:
-            mask = None if key_valid is None else key_valid[:, None, None, :end]
+            left, right = max(start, query_start), min(end, query_end)
+            if left >= right:
+                continue
+            # Padded query rows must still reach the collectives in backward.
+            # They have no loss, and padded keys must never be attended to.
+            key_end = min(end, sequence_length)
+            mask = None if key_valid is None else key_valid[:, None, None, :key_end]
             if is_text:
-                queries = torch.arange(start, end, device=query.device)
-                keys = torch.arange(end, device=query.device)
+                queries = torch.arange(left, right, device=query.device)
+                keys = torch.arange(key_end, device=query.device)
                 causal = (keys[None, :] <= queries[:, None])[None, None]
                 mask = causal if mask is None else mask & causal
-            outputs.append(self._attend(query[:, start:end], key[:, :end], value[:, :end], mask))
+            outputs.append(
+                self._attend(
+                    query[:, left - query_start : right - query_start], key[:, :key_end], value[:, :key_end], mask
+                )
+            )
         output = torch.cat(outputs, dim=1)
+        if parallel.ulysses_enabled:
+            output = gather_heads_scatter_seq(
+                output.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=parallel.ulysses_group
+            ).permute(2, 1, 0, 3)
         return self.to_out[1](self.to_out[0](output.flatten(2).to(query.dtype)))
 
 
@@ -308,12 +353,14 @@ class QwenImage21TransformerBlock(nn.Module):
         self.img_norm2 = nn.LayerNorm(dim, eps=config.eps, elementwise_affine=False)
         self.img_mlp = QwenImage21SwiGLU(dim, dim * config.mlp_ratio)
 
-    def forward(self, hidden_states, modulation, rotary, target_mask, segments, key_valid):
+    def forward(self, hidden_states, modulation, rotary, target_mask, segments, key_valid, sequence_length):
         scale_attn, gate_attn, scale_mlp, gate_mlp = (
             select_modulation(chunk, target_mask) for chunk in modulation.chunk(4, dim=-1)
         )
         attention_input = self.img_norm1(hidden_states) * (1 + scale_attn)
-        hidden_states = hidden_states + gate_attn.tanh() * self.attn(attention_input, rotary, segments, key_valid)
+        hidden_states = hidden_states + gate_attn.tanh() * self.attn(
+            attention_input, rotary, segments, key_valid, sequence_length
+        )
         mlp_input = self.img_norm2(hidden_states) * (1 + scale_mlp)
         hidden_states = hidden_states + gate_mlp.tanh() * self.img_mlp(mlp_input)
         if hidden_states.dtype == torch.float16:
@@ -334,8 +381,13 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
     _no_split_modules = ["QwenImage21TransformerBlock"]
 
     def __init__(self, config, **kwargs):
-        if get_parallel_state().sp_enabled:
-            raise NotImplementedError("Qwen-Image 2.1 requires ulysses_size=1 and cp_size=1.")
+        parallel = get_parallel_state()
+        if config.num_attention_heads % parallel.ulysses_size:
+            raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
+        if parallel.ulysses_enabled and parallel.async_enabled:
+            raise NotImplementedError("Qwen-Image 2.1 uses synchronous Ulysses. Set enable_async=false.")
+        if parallel.sp_enabled and parallel.dp_mode == "eager":
+            raise ValueError("Qwen-Image 2.1 sequence parallelism requires FSDP2 or DDP gradient reduction.")
         attention = kwargs.pop("attn_implementation", None)
         if attention is not None:
             config._attn_implementation = attention

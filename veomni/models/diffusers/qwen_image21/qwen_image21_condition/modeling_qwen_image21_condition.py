@@ -61,7 +61,9 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         self.processor = None
         self.text_encoder = None
         self.vae = None
-        seed = (config.seed or 0) + get_parallel_state().dp_rank
+        parallel = get_parallel_state()
+        self._sp_size = parallel.sp_size
+        seed = (config.seed or 0) + parallel.dp_rank
         self.generator = torch.Generator(device=get_device_type()).manual_seed(seed)
         self.timestep_generator = torch.Generator(device="cpu").manual_seed(seed)
         base = config.base_model_path
@@ -98,9 +100,19 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         return value if isinstance(value, list) else [value]
 
     def rng_state_dict(self):
-        return {"generator": self.generator.get_state(), "timestep_generator": self.timestep_generator.get_state()}
+        return {
+            "generator": self.generator.get_state(),
+            "timestep_generator": self.timestep_generator.get_state(),
+            "sp_size": self._sp_size,
+        }
 
     def load_rng_state_dict(self, state):
+        # Older Qwen-Image 2.1 checkpoints were written without sequence parallelism.
+        if state.get("sp_size", 1) != self._sp_size:
+            raise ValueError(
+                "Qwen-Image 2.1 cannot resume with a different sequence-parallel group size. "
+                "Start a new run from the exported model weights when changing the SP group size."
+            )
         self.generator.set_state(state["generator"].cpu())
         if "timestep_generator" in state:
             self.timestep_generator.set_state(state["timestep_generator"].cpu())

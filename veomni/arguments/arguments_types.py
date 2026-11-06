@@ -851,6 +851,10 @@ class AcceleratorConfig:
         default=1,
         metadata={"help": "Context parallel size."},
     )
+    enable_usp: bool = field(
+        default=False,
+        metadata={"help": "Allow combined Ulysses and context parallelism for models that support USP."},
+    )
     init_device: Literal["cuda", "meta", "npu", "mlu"] = field(
         default="meta",
         metadata={
@@ -907,11 +911,11 @@ class AcceleratorConfig:
             )
         assert self.tp_size == 1, "Tensor parallel size not supported yet."
         assert self.pp_size == 1, "Pipeline parallel size not supported yet."
-        if self.cp_size > 1 and self.ulysses_size > 1:
+        if self.cp_size > 1 and self.ulysses_size > 1 and not self.enable_usp:
             raise NotImplementedError(
                 "Context parallelism cannot be combined with Ulysses yet; "
                 f"got cp_size={self.cp_size} with ulysses_size={self.ulysses_size}. "
-                "Set ulysses_size=1 to use context parallelism."
+                "Set enable_usp=true for a model that supports the combined topology."
             )
 
         self.dp_size = self.world_size // non_dp_size

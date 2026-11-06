@@ -76,6 +76,7 @@ class ParallelState:
     extra_parallel_fsdp_device_mesh: Dict[str, Optional["DeviceMesh"]] = field(default_factory=lambda: {"ep": None})
     extra_parallel_flat_device_mesh: Dict[str, Optional["DeviceMesh"]] = field(default_factory=lambda: {"ep": None})
     async_enabled: Optional[bool] = False
+    enable_usp: bool = False
 
     def __post_init__(self):
         if not self.include_sp_in_fsdp:
@@ -91,11 +92,11 @@ class ParallelState:
         if self.ulysses_size < 1:
             raise ValueError(f"ulysses_size must be a positive integer; got {self.ulysses_size}.")
 
-        if self.cp_size > 1 and self.ulysses_size > 1:
+        if self.cp_size > 1 and self.ulysses_size > 1 and not self.enable_usp:
             raise NotImplementedError(
                 "Context parallelism cannot be combined with Ulysses yet; "
                 f"got cp_size={self.cp_size} with ulysses_size={self.ulysses_size}. "
-                "Set ulysses_size=1 to use context parallelism."
+                "Set enable_usp=true for a model that supports the combined topology."
             )
 
         if self.pp_size * self.dp_size * self.cp_size * self.ulysses_size * self.tp_size != self.world_size:
@@ -509,6 +510,7 @@ def _init_parallel_state(
     name: Optional[str] = "base",
     npu_ep_hccl_buffer_mib: Optional[int] = None,
     npu_ep_hccl_expansion_mode: Optional[str] = None,
+    enable_usp: bool = False,
 ) -> "ParallelState":
     """
     Initialize a parallel state, register it under ``name``, and set it as the
@@ -591,6 +593,7 @@ def _init_parallel_state(
         async_enabled,
         npu_ep_hccl_buffer_mib,
         npu_ep_hccl_expansion_mode,
+        enable_usp,
     )
     cached_state = _PARALLEL_STATE_CACHE.get(cache_key)
     if cached_state is not None:
@@ -735,6 +738,7 @@ def _init_parallel_state(
         extra_parallel_fsdp_device_mesh=extra_parallel_fsdp_device_mesh,
         extra_parallel_flat_device_mesh=extra_parallel_flat_device_mesh,
         async_enabled=async_enabled,
+        enable_usp=enable_usp,
     )
 
     if _PARALLEL_STATE is None:
@@ -761,6 +765,7 @@ def init_parallel_state_from_config(accelerator: "AcceleratorConfig", name: Opti
         pp_size=accelerator.pp_size,
         cp_size=accelerator.cp_size,
         ulysses_size=accelerator.ulysses_size,
+        enable_usp=accelerator.enable_usp,
         extra_parallel_sizes=accelerator.extra_parallel_sizes,
         extra_parallel_placement_innermost=accelerator.extra_parallel_placement_innermost,
         extra_parallel_names=accelerator.extra_parallel_names,
