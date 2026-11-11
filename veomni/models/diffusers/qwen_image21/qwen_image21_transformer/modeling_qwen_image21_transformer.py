@@ -228,10 +228,6 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         text_positions = (~image_mask).nonzero(as_tuple=True)[0]
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
-    if model._mfu_flops_counter is not None:
-        model._mfu_flops_counter.add(
-            hidden_states.shape[0], hidden_states.shape[1], context.shape[1], length, segments
-        )
     parallel = get_parallel_state()
     if parallel.ulysses_enabled:
         joint = slice_input_tensor(joint, dim=1, group=parallel.ulysses_group)
@@ -397,7 +393,6 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
         self.norm_out = QwenImage21OutputNorm(dim, config.eps)
         self.proj_out = nn.Linear(dim, config.out_channels or config.in_channels, bias=False)
         self.gradient_checkpointing = False
-        self._mfu_flops_counter = None
         self.post_init()
 
     def _init_weights(self, module):
@@ -430,6 +425,22 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
         if any(len(shape) != 3 or shape[0] != 1 or min(shape) <= 0 for sample in result for shape in sample):
             raise ValueError("Qwen-Image 2.1 img_shapes must be positive (1, height, width) image grids.")
         return result
+
+    @staticmethod
+    def get_flops_info(batch):
+        """Return logical matmul layouts from prepared condition batches, before SP padding."""
+        layouts = []
+        for images, context, shapes, mask in zip(
+            batch["hidden_states"], batch["encoder_hidden_states"], batch["img_shapes"], batch["img_mask"]
+        ):
+            lengths = [prod(shape) for shape in shapes]
+            slots = mask[0].tolist()
+            tokens = list(chain.from_iterable(repeat(value, 4 if value else 1) for value in slots))
+            segments = _prefix_segments(tokens, lengths)
+            sequence = len(tokens)
+            pairs = sum((end - start) * end for start, end, _ in segments) + lengths[-1] * sequence
+            layouts.append((images.shape[0], images.shape[1], context.shape[1], sequence, pairs))
+        return layouts
 
     def predict_noise(
         self,

@@ -247,6 +247,7 @@ class EnvironMeter:
         self.batch_seqlens = []
         self.batch_ds_idx = []
         self.images_seqlens = []
+        self.dit_flops_info = []
         self._batch_token_stats = []
         self._batch_token_stats_complete = True
 
@@ -287,6 +288,9 @@ class EnvironMeter:
             self.multisource_tracker.load_state_dict(state_dict["multisource_tracker"])
 
     def add(self, micro_batch: Union[Dict[str, "torch.Tensor"], List[Dict[str, "torch.Tensor"]]]) -> None:
+        if self.config.model_type == "QwenImage21Transformer2DModel":
+            # Online batches have no encoded layout yet; DiTTrainer adds it after encoding.
+            return
         if getattr(self.config, "condition_model_type", None) is None:  # hf model
             if isinstance(micro_batch, List):
                 for sample in micro_batch:
@@ -303,6 +307,12 @@ class EnvironMeter:
                     self.batch_ds_idx.extend(_get_multisource_ds_idx(micro_batch))
         else:  # dit diffusers model
             self.batch_seqlens.extend(_compute_wan_seqlens(micro_batch))
+
+    def add_dit_flops(self, layouts):
+        """Record prepared DiT layouts once per micro-batch, before SP slicing."""
+        self.dit_flops_info.extend(layouts)
+        for batch, _images, _context, sequence, _attention_pairs in layouts:
+            self.batch_seqlens.extend([sequence] * batch)
 
     def _record_token_stats(self, batch):
         """Meter standard packed batches without changing existing data-cursor accounting.
@@ -373,6 +383,8 @@ class EnvironMeter:
         freeze_vit: Optional[bool] = None,
     ) -> Dict[str, Any]:
         flops_kwargs = {}
+        if self.dit_flops_info:
+            flops_kwargs["dit_flops_info"] = self.dit_flops_info
         if self.images_seqlens:
             flops_kwargs["images_seqlens"] = self.images_seqlens
         lora_flops_unavailable = lora_config is not None and not self.supports_lora_flops
@@ -477,6 +489,7 @@ class EnvironMeter:
         self.batch_seqlens = []
         self.batch_ds_idx = []
         self.images_seqlens = []
+        self.dit_flops_info = []
         self._batch_token_stats = []
         self._batch_token_stats_complete = True
 

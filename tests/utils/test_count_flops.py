@@ -719,3 +719,31 @@ class TestDeepseekV4Flops:
         compressed_flops, _ = VeomniFlopsCounter(compressed_config).estimate_flops(batch_seqlens, delta_time=1.0)
 
         assert compressed_flops < baseline_flops
+
+
+@pytest.mark.parametrize(
+    "layouts,expected",
+    [
+        ([(1, 8, 3, 11, 97)], 1655040),
+        ([(1, 20, 6, 23, 339)], 3379968),
+        ([(1, 8, 3, 11, 97), (1, 20, 6, 23, 339)], 5035008),
+    ],
+)
+def test_qwen_image21_framework_flops(layouts, expected):
+    config = SimpleNamespace(
+        model_type="QwenImage21Transformer2DModel",
+        num_attention_heads=2,
+        attention_head_dim=16,
+        num_layers=2,
+        mlp_ratio=2,
+        in_channels=8,
+        out_channels=8,
+        context_in_dim=16,
+        causal_condition=True,
+    )
+    with patch("veomni.utils.count_flops.get_device_flops", return_value=354):
+        achieved, peak = VeomniFlopsCounter(config).estimate_flops(
+            [row[3] for row in layouts], 2.0, dit_flops_info=layouts
+        )
+    assert achieved == pytest.approx(expected / 2 / 1e12)
+    assert peak == 354

@@ -36,7 +36,8 @@ def test_packed_lengths_keep_real_single_token_documents():
 
 def _meter(state):
     meter = object.__new__(helper.EnvironMeter)
-    meter.config = SimpleNamespace(condition_model_type=None)
+    meter.config = SimpleNamespace(condition_model_type=None, model_type="test")
+    meter.dit_flops_info = []
     meter.parallel_state = state
     meter.global_batch_size = 2
     meter.world_size = 4
