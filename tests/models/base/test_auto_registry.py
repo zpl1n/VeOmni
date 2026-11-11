@@ -888,21 +888,6 @@ def test_context_parallel_is_refused_on_npu(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.launch_plan(provider=_CPU_LAUNCH)
-def test_context_parallel_gate_allows_qwen_image21_on_npu(monkeypatch: pytest.MonkeyPatch):
-    from types import SimpleNamespace
-
-    import veomni.models.auto as auto
-    from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.configuration_qwen_image21_transformer import (
-        QwenImage21Transformer2DConfig,
-    )
-
-    monkeypatch.setattr(auto, "is_parallel_state_initialized", lambda: True)
-    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True))
-    monkeypatch.setattr(auto, "IS_NPU_AVAILABLE", True)
-    check_context_parallel_supported(QwenImage21Transformer2DConfig())
-
-
-@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
 def test_context_parallel_gate_is_inert_when_no_parallel_state_was_installed(monkeypatch: pytest.MonkeyPatch):
     from veomni.distributed import parallel_state as parallel_state_module
 

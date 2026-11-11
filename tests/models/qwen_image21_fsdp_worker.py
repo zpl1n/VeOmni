@@ -79,26 +79,25 @@ def candidate_forward(model, samples, targets, weights=None):
     return result.predictions, result.loss["mse_loss"]
 
 
-def parallel_config(world_size, ulysses, cp):
+def parallel_config(world_size, ulysses):
     return AcceleratorConfig(
         dp_replicate_size=1,
-        dp_shard_size=world_size // (ulysses * cp),
+        dp_shard_size=world_size // ulysses,
         ulysses_size=ulysses,
-        cp_size=cp,
     )
 
 
-def run_cpu_sp_cp():
+def run_cpu_sp():
     torch.set_num_threads(1)
     torch.utils.checkpoint.DefaultDeviceType.set_device_type("cpu")
     torch.distributed.init_process_group("gloo")
     world = torch.distributed.get_world_size()
     assert world == 4
     try:
-        init_parallel_state_from_config(parallel_config(world, 1, 1), name="reference")
-        for ulysses, cp in [(2, 1), (1, 2), (1, 4)]:
-            name = f"u{ulysses}-cp{cp}"
-            init_parallel_state_from_config(parallel_config(world, ulysses, cp), name=name)
+        init_parallel_state_from_config(parallel_config(world, 1), name="reference")
+        for gradient_checkpointing in (False, True):
+            name = f"sp-gc{int(gradient_checkpointing)}"
+            init_parallel_state_from_config(parallel_config(world, 2), name=name)
             torch.manual_seed(427)
             with use_parallel_state("reference"):
                 reference = QwenImage21Transformer2DModel(tiny_config()).train()
@@ -106,7 +105,7 @@ def run_cpu_sp_cp():
                 state = get_parallel_state()
                 candidate = QwenImage21Transformer2DModel(tiny_config()).train()
             candidate.load_state_dict(reference.state_dict(), strict=True)
-            if cp > 1:
+            if gradient_checkpointing:
                 candidate.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
             ref_optimizer = torch.optim.SGD(reference.parameters(), lr=0.01, foreach=False)
             optimizer = torch.optim.SGD(candidate.parameters(), lr=0.01, foreach=False)
@@ -122,7 +121,7 @@ def run_cpu_sp_cp():
                 text, edit = [sample_inputs(edit, requires_grad=False) for edit in (False, True)]
                 text["hidden_states"] = text["hidden_states"][:, :4]
                 text["img_shapes"] = [[(1, 2, 2)]]
-                # Five joint tokens over four ranks leave one entirely padded shard.
+                # Five joint tokens exercise padding across two Ulysses ranks.
                 text["encoder_hidden_states"] = text["encoder_hidden_states"][:, :1]
                 text["encoder_hidden_states_mask"] = text["encoder_hidden_states_mask"][:, :1]
                 text["img_mask"] = text["img_mask"][:, 2:-1]
@@ -168,16 +167,14 @@ def run_cpu_sp_cp():
 
 
 def main(output_dir, mode):
-    if mode == "sp-cp-cpu":
+    if mode == "sp-cpu":
         with patch("veomni.distributed.parallel_state.get_device_type", return_value="cpu"):
-            run_cpu_sp_cp()
+            run_cpu_sp()
         return
-    if mode not in ("fp32", "bf16-gc", "sp-fp32", "sp-bf16-gc", "cp-fp32", "cp-bf16-gc"):
+    if mode not in ("fp32", "bf16-gc", "sp-fp32", "sp-bf16-gc"):
         raise ValueError(f"Unknown precision mode: {mode}")
     bf16 = mode.endswith("bf16-gc")
-    ulysses = 2 if mode.startswith("sp-") else 1
-    cp = 2 if mode.startswith("cp-") else 1
-    sequence_parallel = ulysses > 1 or cp > 1
+    sequence_parallel = mode.startswith("sp-")
     device = get_device_type()
     if device not in ("cuda", "npu"):
         raise RuntimeError("This worker requires real accelerator execution; no CPU fallback is allowed.")
@@ -187,9 +184,9 @@ def main(output_dir, mode):
     rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
     assert world_size == 2
-    init_parallel_state_from_config(parallel_config(world_size, 1, 1), name="base")
+    init_parallel_state_from_config(parallel_config(world_size, 1), name="base")
     if sequence_parallel:
-        init_parallel_state_from_config(parallel_config(world_size, ulysses, cp), name="sequence")
+        init_parallel_state_from_config(parallel_config(world_size, 2), name="sequence")
     try:
         with use_parallel_state("base"):
             torch.manual_seed(427)

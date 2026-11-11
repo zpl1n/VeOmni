@@ -23,7 +23,6 @@ QWEN_IMAGE21_MODEL_FIELDS = (
 class QwenImage21Transformer2DConfig(VeOmniPretrainedConfig):
     model_type = "QwenImage21Transformer2DModel"
     condition_model_type = "QwenImage21ConditionModel"
-    _supports_usp = True
 
     def __init__(
         self,

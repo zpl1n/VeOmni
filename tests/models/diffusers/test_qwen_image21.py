@@ -80,7 +80,7 @@ def clone_sample(sample):
     }
 
 
-@pytest.mark.parametrize("attention", ["eager", "sdpa"])
+@pytest.mark.parametrize("attention", ["eager", "sdpa", "veomni_sdpa"])
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "two-reference-edit"])
 @pytest.mark.parametrize("training", [False, True], ids=["prediction", "supervised"])
 def test_upstream_predictions_input_and_parameter_gradients(attention, edit, training):

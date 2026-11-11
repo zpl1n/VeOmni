@@ -92,9 +92,6 @@ def check_context_parallel_supported(config: PretrainedConfig) -> None:
     if not get_parallel_state().cp_enabled:
         return
 
-    if getattr(type(config), "_supports_usp", False):
-        return
-
     if IS_NPU_AVAILABLE:
         raise NotImplementedError("Context parallelism is GPU-only in this release; set cp_size=1 on Ascend/NPU runs.")
 
@@ -284,7 +281,7 @@ def build_foundation_model(
     if attn_implementation is not None:
         init_kwargs["attn_implementation"] = attn_implementation
 
-    if effective_attn not in _VEOMNI_SP_ATTN and not getattr(type(config), "_supports_usp", False):
+    if effective_attn not in _VEOMNI_SP_ATTN:
         logger.warning_rank0(
             f"building foundation model with attn_implementation: {effective_attn}.. "
             "you are missing sequence parallelism support. Please use a veomni_* attention implementation for SP."

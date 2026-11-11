@@ -103,41 +103,30 @@ encoders and training state consume accelerator memory in online mode.
 ## Sequence parallelism
 
 The training examples default to complete sequences on each rank. For long
-sequences, Qwen-Image 2.1 supports synchronous Ulysses SP or context parallelism
-(CP). On eight devices, add these overrides to the online or offline training
-command for Ulysses:
+sequences, Qwen-Image 2.1 supports synchronous Ulysses SP. On eight devices,
+add these overrides to the online or offline training command:
 
 ```bash
   --model.accelerator.ulysses_size 4 \
-  --model.accelerator.cp_size 1 \
   --train.global_batch_size 2
 ```
 
-For CP instead, use:
+As in Qwen-Image, the existing `ulysses_size` selects sequence-parallel execution.
+Its default of 1 uses the complete sequence on each rank. Keep `cp_size` at its
+default of 1; context parallelism is unsupported for this model.
 
-```bash
-  --model.accelerator.ulysses_size 1 \
-  --model.accelerator.cp_size 4 \
-  --train.global_batch_size 2
-```
-
-As in Qwen-Image, the existing parallel sizes select sequence-parallel execution.
-Both sizes set to 1 use the complete sequence on each rank. Increasing
-`ulysses_size` selects Ulysses, and increasing `cp_size` selects CP. The original
-framework checks reject both sizes exceeding 1; combined USP is unsupported.
-
-Either command processes two samples per micro step, each shared by four
+The command processes two samples per micro step, each shared by four
 sequence-parallel ranks. Global batch size must be divisible by
-`micro_batch_size * dp_size`, where `dp_size = world_size / (ulysses_size * cp_size)`.
+`micro_batch_size * dp_size`, where `dp_size = world_size / ulysses_size`.
 Keep the global batch size at 8 to accumulate four micro batches per rank in
 this example. The number of attention heads must be divisible by
 `ulysses_size`.
 
-Each rank runs the DiT blocks on a shard of the joint image and text sequence.
-Ulysses exchanges sequence chunks for attention heads. CP keeps query rows
-local and all-gathers the corresponding K/V across its ranks. The DiT applies
-the original block-causal mask and gathers target predictions for the weighted
-loss. Each online sequence-parallel peer runs the frozen condition encoders
+The model slices the sequence before the Transformer blocks, exchanges sequence
+chunks for attention heads with Ulysses all-to-all, reverses that exchange after
+attention, and gathers target predictions for the weighted loss. Qwen-Image 2.1
+retains the DiffSynth single interleaved image/text stream and block-causal masks.
+Each online sequence-parallel peer runs the frozen condition encoders
 for its group's sample. Embedding can be run with the original topology
 because the cached conditions store full samples.
 Keep the same sequence-parallel group size when resuming a training checkpoint
@@ -191,8 +180,9 @@ Only load caches you produced or trust because the format serializes tensors wit
   limit. Exceeding it raises an error; it never truncates image slots. Generic
   `data.max_seq_len` does not resize images or truncate the DiT joint sequence.
 - Supported attention selections are `eager` and `sdpa` (`veomni_sdpa` alias).
-  Use SDPA for training; eager materializes attention scores. NPU rotary
-  computation transfers real positional tables, avoiding complex NPU tensors.
+  The training YAMLs use `veomni_sdpa`, which selects the same PyTorch SDPA
+  computation. Eager materializes attention scores. NPU rotary uses real
+  positional tables, avoiding complex NPU tensors.
 - Tensor batches must share a layout. List samples are processed separately.
 
 ## Performance profiling
@@ -222,10 +212,10 @@ loading and save/reload, RGBA preprocessing, real Qwen3-VL/VAE encoding, cache a
 RNG restoration, and an optimizer step through the DiT trainer. The accelerator
 cases are configured to compare single-device execution with two-device FSDP2
 over two optimizer steps in FP32 and in BF16 with gradient checkpointing, using
-plain FSDP2, Ulysses-only, and CP-only modes. The four-process CPU case covers
-Ulysses and CP separately against the unsharded model, including padding,
-weighted loss, parameter gradients, and updates. These separate-mode cases
-need a fresh run after restoring the framework's original hybrid checks.
+plain FSDP2 and Ulysses SP. The four-process CPU case compares Ulysses SP
+(`ulysses_size=2`, `dp_size=2`) against the unsharded model, with and without
+gradient checkpointing, including padding, weighted loss, parameter gradients,
+and updates. These Ulysses-only cases need a fresh run after removing CP support.
 
 An independent CPU comparison against the pinned DiffSynth implementation
 matched the BF16 condition features, clean and noisy latents, sampled time and

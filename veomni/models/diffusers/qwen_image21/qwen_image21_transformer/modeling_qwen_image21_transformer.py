@@ -229,11 +229,11 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
     parallel = get_parallel_state()
-    if parallel.sp_enabled:
-        joint = slice_input_tensor(joint, dim=1)
-        rotary = slice_input_tensor(rotary, dim=0)
+    if parallel.ulysses_enabled:
+        joint = slice_input_tensor(joint, dim=1, group=parallel.ulysses_group)
+        rotary = slice_input_tensor(rotary, dim=0, group=parallel.ulysses_group)
         if modulation_mask is not None:
-            modulation_mask = slice_input_tensor(modulation_mask, dim=0)
+            modulation_mask = slice_input_tensor(modulation_mask, dim=0, group=parallel.ulysses_group)
     for block in model.transformer_blocks:
         args = (joint, modulation, rotary, modulation_mask, segments, key_valid, length)
         if torch.is_grad_enabled() and model.gradient_checkpointing:
@@ -241,10 +241,10 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         else:
             joint = block(*args)
     output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
-    if parallel.sp_enabled:
+    if parallel.ulysses_enabled:
         # Every SP rank computes the full loss. Gather backward sums its
         # replicated gradients before FSDP averages over DP and SP ranks.
-        output = gather_outputs(output, gather_dim=1, group=parallel.sp_group)
+        output = gather_outputs(output, gather_dim=1, group=parallel.ulysses_group)
     return output[:, prefix_length:length]
 
 
@@ -310,33 +310,19 @@ class QwenImage21Attention(nn.Module):
             qkv = torch.stack((query, key, value), dim=0).permute(3, 2, 0, 1, 4)
             qkv = gather_seq_scatter_heads(qkv, seq_dim=1, head_dim=0, group=parallel.ulysses_group)
             query, key, value = qkv.permute(2, 3, 1, 0, 4).unbind(0)
-        query_start = 0
-        if parallel.cp_enabled:
-            # CP keeps the local query rows and gathers the full K/V sequence.
-            kv = torch.stack((key, value), dim=2)
-            key, value = gather_outputs(kv, gather_dim=1, group=parallel.cp_group).unbind(2)
-            query_start = parallel.cp_rank * query.shape[1]
-        query_end = query_start + query.shape[1]
         prefix_length = segments[-1][1] if segments else 0
         outputs = []
         for start, end, is_text in [*segments, (prefix_length, key.shape[1], False)]:
-            left, right = max(start, query_start), min(end, query_end)
-            if left >= right:
-                continue
-            # Padded query rows must still reach the collectives in backward.
-            # They have no loss, and padded keys must never be attended to.
+            # Padded keys must never be attended to; padded query outputs are
+            # removed after the final sequence gather.
             key_end = min(end, sequence_length)
             mask = None if key_valid is None else key_valid[:, None, None, :key_end]
             if is_text:
-                queries = torch.arange(left, right, device=query.device)
+                queries = torch.arange(start, end, device=query.device)
                 keys = torch.arange(key_end, device=query.device)
                 causal = (keys[None, :] <= queries[:, None])[None, None]
                 mask = causal if mask is None else mask & causal
-            outputs.append(
-                self._attend(
-                    query[:, left - query_start : right - query_start], key[:, :key_end], value[:, :key_end], mask
-                )
-            )
+            outputs.append(self._attend(query[:, start:end], key[:, :key_end], value[:, :key_end], mask))
         output = torch.cat(outputs, dim=1)
         if parallel.ulysses_enabled:
             output = gather_heads_scatter_seq(
@@ -386,7 +372,7 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
             raise ValueError("Qwen-Image 2.1 attention heads must be divisible by ulysses_size.")
         if parallel.ulysses_enabled and parallel.async_enabled:
             raise NotImplementedError("Qwen-Image 2.1 uses synchronous Ulysses. Set enable_async=false.")
-        if parallel.sp_enabled and parallel.dp_mode == "eager":
+        if parallel.ulysses_enabled and parallel.dp_mode == "eager":
             raise ValueError("Qwen-Image 2.1 sequence parallelism requires FSDP2 or DDP gradient reduction.")
         attention = kwargs.pop("attn_implementation", None)
         if attention is not None:

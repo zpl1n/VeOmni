@@ -96,9 +96,10 @@ real-valued NPU rotary embeddings. Its `qwen_image21_condition/` package directl
 encodes inputs with Qwen3-VL and the RGBA VAE and prepares Flow Matching inputs
 for both online and cached offline training. `qwen_image21_online` preserves
 image alpha. The standard `DiTTrainer` handles all three stages. Training uses
-FSDP2 and optionally shards the DiT joint sequence with Ulysses or CP, selected
-by `ulysses_size` or `cp_size`. The original framework checks prevent combining
-both axes. CP keeps local queries and all-gathers K/V. See
+FSDP2 and optionally shards the DiT joint sequence with synchronous Ulysses SP,
+selected by the existing `ulysses_size`. Model-local slicing, attention
+all-to-all, and output gathering follow the Qwen-Image design while preserving
+the DiffSynth single interleaved image/text stream. CP is unsupported. See
 `docs/examples/qwen_image21.md`.
 
 ### FlexAttention package
