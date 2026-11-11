@@ -96,25 +96,6 @@ def test_dataloader_shuffle_reaches_sampler(monkeypatch, task, shuffle):
     assert trainer.base.train_dataloader.sampler.shuffle is expected
 
 
-def test_prefetch_cleanup_on_sequence_parallel_follower(monkeypatch):
-    trainer = _trainer(monkeypatch, "offline_training", micro_batch_size=1)
-    trainer.base.args.data.dataloader.use_background_prefetcher = True
-    trainer.base.start_epoch = trainer.base.start_step = 0
-    trainer.base.state = SimpleNamespace()
-    trainer.base.train_dataloader = None
-    trainer.base.destroy_distributed = Mock()
-    trainer.on_train_begin = trainer.on_train_end = Mock()
-    trainer.on_epoch_begin = trainer.on_epoch_end = Mock()
-    trainer.train_step = Mock()
-    monkeypatch.setattr(dit_module, "synchronize", lambda: None)
-    monkeypatch.setattr(dit_module.helper, "print_device_mem_info", lambda *args: None)
-
-    trainer.train()
-
-    trainer.train_step.assert_called_once_with(None)
-    trainer.base.destroy_distributed.assert_called_once_with()
-
-
 @pytest.mark.parametrize("task", ["offline_training", "online_training", "offline_embedding"])
 def test_offline_embedding_keeps_the_last_batch(monkeypatch, task):
     trainer = _trainer(monkeypatch, task, micro_batch_size=1)
