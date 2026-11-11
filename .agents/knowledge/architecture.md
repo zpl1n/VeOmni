@@ -97,7 +97,8 @@ encodes inputs with Qwen3-VL and the RGBA VAE and prepares Flow Matching inputs
 for both online and cached offline training. `qwen_image21_online` preserves
 image alpha. The standard `DiTTrainer` handles all three stages. Training uses
 FSDP2 and optionally shards the DiT joint sequence with Ulysses, CP, or their
-combined topology (`enable_usp`). CP all-gathers K/V within each head shard. See
+combined topology, selected by `ulysses_size` and `cp_size`. CP all-gathers K/V
+within each head shard. See
 `docs/examples/qwen_image21.md`.
 
 ### FlexAttention package

@@ -286,11 +286,27 @@ def test_deep_update_merges_sp_and_cp_from_base_and_override(monkeypatch):
     assert modules["pure_sp"].accelerator.dp_size == modules["pure_cp"].accelerator.dp_size == 2
 
 
-def test_deep_update_unreset_axis_rejected_by_cp_ulysses_guard(monkeypatch):
-    """When top-level ``model.accelerator`` sets ``ulysses_size=2`` and a module
-    overrides only ``cp_size=2`` without resetting ``ulysses_size=1``, ``_deep_update``
-    merges both into ``(cp_size=2, ulysses_size=2)``, which ``AcceleratorConfig``
-    rejects because combined CP+Ulysses on a single module is not supported yet."""
+def test_deep_update_preserves_inherited_ulysses_when_cp_is_overridden(monkeypatch):
+    """A module's CP override combines with its inherited Ulysses axis."""
+    monkeypatch.setenv("WORLD_SIZE", "8")
+    global_args = OmniModuleRuntimeArguments(
+        model_path="/tmp/model",
+        accelerator=AcceleratorConfig(ulysses_size=2),
+    )
+    modules = build_omni_module_runtime_args(
+        global_args,
+        "/tmp/model",
+        {"combined": {"accelerator": {"cp_size": 2}}},
+    )
+    accelerator = modules["combined"].accelerator
+    assert (accelerator.cp_size, accelerator.ulysses_size) == (2, 2)
+    assert accelerator.dp_size == 2
+    assert (global_args.accelerator.cp_size, global_args.accelerator.ulysses_size) == (1, 2)
+    assert global_args.accelerator.dp_size == 4
+
+
+def test_deep_update_combined_axes_still_require_matching_module_dp_sizes(monkeypatch):
+    """Combining inherited Ulysses and overridden CP reduces the module's DP size."""
     monkeypatch.setenv("WORLD_SIZE", "8")
     args = _fake_args(
         accelerator=AcceleratorConfig(ulysses_size=2),
@@ -299,7 +315,7 @@ def test_deep_update_unreset_axis_rejected_by_cp_ulysses_guard(monkeypatch):
             MODULE_B: {"accelerator": {"fsdp_config": {"fsdp_mode": "fsdp2"}, "cp_size": 2}},
         },
     )
-    with pytest.raises(NotImplementedError, match="Context parallelism cannot be combined with Ulysses yet"):
+    with pytest.raises(ValueError, match="All distributed SeedOmni modules must resolve to the same `dp_size`"):
         build_omni_model_runtime_args(args)
 
 

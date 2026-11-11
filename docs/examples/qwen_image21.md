@@ -108,14 +108,18 @@ sequences, Qwen-Image 2.1 supports synchronous Ulysses, context parallelism
 to the online or offline training command:
 
 ```bash
-  --model.accelerator.enable_usp true \
   --model.accelerator.ulysses_size 2 \
   --model.accelerator.cp_size 2 \
   --train.global_batch_size 2
 ```
 
-This processes two samples per micro step, each shared by four sequence-parallel
-ranks. Global batch size must be divisible by
+As in Qwen-Image, the existing parallel sizes select sequence-parallel execution.
+Both sizes set to 1 use the complete sequence on each rank. Increasing
+`ulysses_size` selects Ulysses, increasing `cp_size` selects CP, and increasing
+both selects their combined topology for Qwen-Image 2.1.
+
+The command above processes two samples per micro step, each shared by four
+sequence-parallel ranks. Global batch size must be divisible by
 `micro_batch_size * dp_size`, where `dp_size = world_size / (ulysses_size * cp_size)`.
 Keep the global batch size at 8 to accumulate four micro batches per rank in
 this example. The number of attention heads must be divisible by

@@ -85,7 +85,6 @@ def parallel_config(world_size, ulysses, cp):
         dp_shard_size=world_size // (ulysses * cp),
         ulysses_size=ulysses,
         cp_size=cp,
-        enable_usp=ulysses > 1 and cp > 1,
     )
 
 
