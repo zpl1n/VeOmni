@@ -881,14 +881,14 @@ def test_context_parallel_is_refused_on_npu(monkeypatch: pytest.MonkeyPatch):
     import veomni.models.auto as auto
 
     monkeypatch.setattr(auto, "is_parallel_state_initialized", lambda: True)
-    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True, ulysses_enabled=False))
+    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True))
     monkeypatch.setattr(auto, "IS_NPU_AVAILABLE", True)
     with pytest.raises(NotImplementedError, match="GPU-only"):
         check_context_parallel_supported(_tiny_qwen3_config())
 
 
 @pytest.mark.launch_plan(provider=_CPU_LAUNCH)
-def test_usp_build_gate_requires_model_opt_in(monkeypatch: pytest.MonkeyPatch):
+def test_context_parallel_gate_allows_qwen_image21_on_npu(monkeypatch: pytest.MonkeyPatch):
     from types import SimpleNamespace
 
     import veomni.models.auto as auto
@@ -897,11 +897,9 @@ def test_usp_build_gate_requires_model_opt_in(monkeypatch: pytest.MonkeyPatch):
     )
 
     monkeypatch.setattr(auto, "is_parallel_state_initialized", lambda: True)
-    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True, ulysses_enabled=True))
+    monkeypatch.setattr(auto, "get_parallel_state", lambda: SimpleNamespace(cp_enabled=True))
     monkeypatch.setattr(auto, "IS_NPU_AVAILABLE", True)
     check_context_parallel_supported(QwenImage21Transformer2DConfig())
-    with pytest.raises(NotImplementedError, match="USP is not implemented"):
-        check_context_parallel_supported(_tiny_qwen3_config())
 
 
 @pytest.mark.launch_plan(provider=_CPU_LAUNCH)

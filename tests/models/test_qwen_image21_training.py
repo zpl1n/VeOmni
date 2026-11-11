@@ -64,8 +64,7 @@ from veomni.utils.device import get_device_type
 
 ROOT = Path(__file__).resolve().parents[2]
 _TWO_RANKS = LaunchSpec(nproc=2)
-_USP_ACCELERATOR = LaunchSpec(nproc=4)
-_USP_CPU = LaunchSpec(nproc=4, device="cpu")
+_SP_CP_CPU = LaunchSpec(nproc=4, device="cpu")
 _CPU_LAUNCH = LaunchSpec(device="cpu")
 
 
@@ -447,9 +446,9 @@ def launch_qwen_image21_worker(tmp_path, mode, launch):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.launch_plan(provider=_USP_CPU)
-def test_usp_cpu_predictions_gradients_and_updates(tmp_path):
-    launch_qwen_image21_worker(tmp_path, "usp-cpu", _USP_CPU)
+@pytest.mark.launch_plan(provider=_SP_CP_CPU)
+def test_sp_cp_cpu_predictions_gradients_and_updates(tmp_path):
+    launch_qwen_image21_worker(tmp_path, "sp-cp-cpu", _SP_CP_CPU)
 
 
 @pytest.mark.skipif(
@@ -462,25 +461,17 @@ def test_usp_cpu_predictions_gradients_and_updates(tmp_path):
     [
         pytest.param("fp32", _TWO_RANKS, id="fp32"),
         pytest.param("bf16-gc", _TWO_RANKS, id="bf16-gc"),
-        pytest.param(
-            "usp-fp32",
-            _USP_ACCELERATOR,
-            marks=pytest.mark.skipif(runner_device_count() < 4, reason="requires four accelerators for 2x2 USP"),
-            id="usp-fp32",
-        ),
-        pytest.param(
-            "usp-bf16-gc",
-            _USP_ACCELERATOR,
-            marks=pytest.mark.skipif(runner_device_count() < 4, reason="requires four accelerators for 2x2 USP"),
-            id="usp-bf16-gc",
-        ),
+        pytest.param("sp-fp32", _TWO_RANKS, id="sp-fp32"),
+        pytest.param("sp-bf16-gc", _TWO_RANKS, id="sp-bf16-gc"),
+        pytest.param("cp-fp32", _TWO_RANKS, id="cp-fp32"),
+        pytest.param("cp-bf16-gc", _TWO_RANKS, id="cp-bf16-gc"),
     ],
 )
 def test_accelerator_and_fsdp2_two_optimizer_steps(tmp_path, mode, launch):
     launch_qwen_image21_worker(tmp_path, mode, launch)
     report = json.loads((tmp_path / "result.json").read_text())
-    if mode == "usp-bf16-gc":
-        assert math.isfinite(report.pop("usp_bf16_max_relative_l2"))
+    if mode in ("sp-bf16-gc", "cp-bf16-gc"):
+        assert math.isfinite(report.pop("sp_bf16_max_relative_l2"))
     assert report == {
         "device": get_device_type(),
         "ranks": launch.nproc,

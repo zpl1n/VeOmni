@@ -49,9 +49,9 @@ Every module inherits from `model.accelerator` through `_deep_update` in
 [How a module's arguments are resolved](../usage/training_and_inference.md#how-a-modules-arguments-are-resolved)).
 Because `_deep_update` merges keys individually, if `model.accelerator` sets
 `ulysses_size > 1` and a module wants pure CP (`cp_size > 1`), remember to also
-set `ulysses_size: 1` in that module's `accelerator:` block. The combined sizes
-otherwise describe a hybrid topology, which requires support from that
-module's model and is checked when the model is built.
+set `ulysses_size: 1` in that module's `accelerator:` block (since combining
+`cp_size > 1` and `ulysses_size > 1` on a single module is rejected by
+`AcceleratorConfig` / `ParallelState`).
 
 `build_omni_model_runtime_args` validates that all distributed modules and the
 top-level `model.accelerator` resolve to the same `dp_size`.

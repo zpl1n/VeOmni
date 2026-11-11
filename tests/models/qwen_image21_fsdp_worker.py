@@ -88,7 +88,7 @@ def parallel_config(world_size, ulysses, cp):
     )
 
 
-def run_cpu_usp():
+def run_cpu_sp_cp():
     torch.set_num_threads(1)
     torch.utils.checkpoint.DefaultDeviceType.set_device_type("cpu")
     torch.distributed.init_process_group("gloo")
@@ -96,7 +96,7 @@ def run_cpu_usp():
     assert world == 4
     try:
         init_parallel_state_from_config(parallel_config(world, 1, 1), name="reference")
-        for ulysses, cp in [(2, 1), (1, 2), (2, 2)]:
+        for ulysses, cp in [(2, 1), (1, 2), (1, 4)]:
             name = f"u{ulysses}-cp{cp}"
             init_parallel_state_from_config(parallel_config(world, ulysses, cp), name=name)
             torch.manual_seed(427)
@@ -106,7 +106,7 @@ def run_cpu_usp():
                 state = get_parallel_state()
                 candidate = QwenImage21Transformer2DModel(tiny_config()).train()
             candidate.load_state_dict(reference.state_dict(), strict=True)
-            if ulysses > 1 and cp > 1:
+            if cp > 1:
                 candidate.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
             ref_optimizer = torch.optim.SGD(reference.parameters(), lr=0.01, foreach=False)
             optimizer = torch.optim.SGD(candidate.parameters(), lr=0.01, foreach=False)
@@ -168,14 +168,16 @@ def run_cpu_usp():
 
 
 def main(output_dir, mode):
-    if mode == "usp-cpu":
+    if mode == "sp-cp-cpu":
         with patch("veomni.distributed.parallel_state.get_device_type", return_value="cpu"):
-            run_cpu_usp()
+            run_cpu_sp_cp()
         return
-    if mode not in ("fp32", "bf16-gc", "usp-fp32", "usp-bf16-gc"):
+    if mode not in ("fp32", "bf16-gc", "sp-fp32", "sp-bf16-gc", "cp-fp32", "cp-bf16-gc"):
         raise ValueError(f"Unknown precision mode: {mode}")
     bf16 = mode.endswith("bf16-gc")
-    usp = mode.startswith("usp-")
+    ulysses = 2 if mode.startswith("sp-") else 1
+    cp = 2 if mode.startswith("cp-") else 1
+    sequence_parallel = ulysses > 1 or cp > 1
     device = get_device_type()
     if device not in ("cuda", "npu"):
         raise RuntimeError("This worker requires real accelerator execution; no CPU fallback is allowed.")
@@ -184,10 +186,10 @@ def main(output_dir, mode):
     torch.distributed.init_process_group(get_dist_comm_backend())
     rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
-    assert world_size == (4 if usp else 2)
+    assert world_size == 2
     init_parallel_state_from_config(parallel_config(world_size, 1, 1), name="base")
-    if usp:
-        init_parallel_state_from_config(parallel_config(world_size, 2, 2), name="usp")
+    if sequence_parallel:
+        init_parallel_state_from_config(parallel_config(world_size, ulysses, cp), name="sequence")
     try:
         with use_parallel_state("base"):
             torch.manual_seed(427)
@@ -213,7 +215,7 @@ def main(output_dir, mode):
                 for block in unsharded.transformer_blocks:
                     fully_shard(block, mesh=singleton_mesh, mp_policy=policy)
                 fully_shard(unsharded, mesh=singleton_mesh, mp_policy=policy)
-            with use_parallel_state("usp" if usp else "base"):
+            with use_parallel_state("sequence" if sequence_parallel else "base"):
                 sharded = build_foundation_model(
                     str(checkpoint),
                     init_device="meta",
@@ -231,12 +233,12 @@ def main(output_dir, mode):
             if bf16:
                 assert unsharded.gradient_checkpointing and sharded.gradient_checkpointing
             assert any(isinstance(parameter, DTensor) for parameter in sharded.parameters())
-            bf16_usp = bf16 and usp
+            bf16_sp = bf16 and sequence_parallel
             max_relative_l2 = 0.0
 
             def compare(actual, expected, name):
                 nonlocal max_relative_l2
-                if not bf16_usp:
+                if not bf16_sp:
                     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-4, msg=name)
                     return
                 # BF16 activation gradients are rounded before the FP32 FSDP
@@ -273,7 +275,7 @@ def main(output_dir, mode):
                         cpu_predictions, cpu_loss = reference_forward(reference, cpu_samples, cpu_targets)
                         cpu_loss.backward()
                 predictions, loss = candidate_forward(unsharded, samples, targets)
-                with use_parallel_state("usp" if usp else "base"):
+                with use_parallel_state("sequence" if sequence_parallel else "base"):
                     sharded_predictions, sharded_loss = candidate_forward(sharded, samples, targets)
                 if not bf16:
                     torch.testing.assert_close(loss.cpu(), cpu_loss, atol=3e-5, rtol=3e-4)
@@ -283,7 +285,7 @@ def main(output_dir, mode):
                 for plain, fsdp in zip(predictions, sharded_predictions, strict=True):
                     compare(fsdp, plain, "prediction")
                 loss.backward()
-                with use_parallel_state("usp" if usp else "base"):
+                with use_parallel_state("sequence" if sequence_parallel else "base"):
                     sharded_loss.backward()
                 cpu_parameters = dict(reference.named_parameters())
                 plain_parameters = dict(unsharded.named_parameters())
@@ -326,7 +328,7 @@ def main(output_dir, mode):
                             "mode": mode,
                             "upstream_cpu": "covered-by-fp32-case" if bf16 else "PASS",
                             "fsdp2": "PASS",
-                            **({"usp_bf16_max_relative_l2": max_relative_l2} if bf16_usp else {}),
+                            **({"sp_bf16_max_relative_l2": max_relative_l2} if bf16_sp else {}),
                         }
                     )
                 )

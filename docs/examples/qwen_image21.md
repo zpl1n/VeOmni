@@ -100,30 +100,38 @@ The example uses FSDP2, BF16 computation with FP32 gradient reduction, gradient
 checkpointing, micro batch size 1, and global batch size 8. Both the frozen
 encoders and training state consume accelerator memory in online mode.
 
-## Unified sequence parallelism
+## Sequence parallelism
 
 The training examples default to complete sequences on each rank. For long
-sequences, Qwen-Image 2.1 supports synchronous Ulysses, context parallelism
-(CP), and their combined topology (USP). On eight devices, add these overrides
-to the online or offline training command:
+sequences, Qwen-Image 2.1 supports synchronous Ulysses SP or context parallelism
+(CP). On eight devices, add these overrides to the online or offline training
+command for Ulysses:
 
 ```bash
-  --model.accelerator.ulysses_size 2 \
-  --model.accelerator.cp_size 2 \
+  --model.accelerator.ulysses_size 4 \
+  --model.accelerator.cp_size 1 \
+  --train.global_batch_size 2
+```
+
+For CP instead, use:
+
+```bash
+  --model.accelerator.ulysses_size 1 \
+  --model.accelerator.cp_size 4 \
   --train.global_batch_size 2
 ```
 
 As in Qwen-Image, the existing parallel sizes select sequence-parallel execution.
 Both sizes set to 1 use the complete sequence on each rank. Increasing
-`ulysses_size` selects Ulysses, increasing `cp_size` selects CP, and increasing
-both selects their combined topology for Qwen-Image 2.1.
+`ulysses_size` selects Ulysses, and increasing `cp_size` selects CP. The original
+framework checks reject both sizes exceeding 1; combined USP is unsupported.
 
-The command above processes two samples per micro step, each shared by four
+Either command processes two samples per micro step, each shared by four
 sequence-parallel ranks. Global batch size must be divisible by
 `micro_batch_size * dp_size`, where `dp_size = world_size / (ulysses_size * cp_size)`.
 Keep the global batch size at 8 to accumulate four micro batches per rank in
 this example. The number of attention heads must be divisible by
-`ulysses_size`. Set either axis to 1 to run the other by itself.
+`ulysses_size`.
 
 Each rank runs the DiT blocks on a shard of the joint image and text sequence.
 Ulysses exchanges sequence chunks for attention heads. CP keeps query rows
@@ -212,11 +220,12 @@ pytest -q tests/models/diffusers/test_qwen_image21.py \
 They compare upstream predictions and input/parameter gradients, strict checkpoint
 loading and save/reload, RGBA preprocessing, real Qwen3-VL/VAE encoding, cache and
 RNG restoration, and an optimizer step through the DiT trainer. The accelerator
-cases compare single-device execution with FSDP2 over two optimizer steps in
-FP32 and in BF16 with gradient checkpointing. They use two devices for plain
-FSDP2 and four for USP. The four-process CPU test also compares Ulysses, CP, and
-combined USP with the unsharded model, including padding, weighted loss,
-parameter gradients, and updates.
+cases are configured to compare single-device execution with two-device FSDP2
+over two optimizer steps in FP32 and in BF16 with gradient checkpointing, using
+plain FSDP2, Ulysses-only, and CP-only modes. The four-process CPU case covers
+Ulysses and CP separately against the unsharded model, including padding,
+weighted loss, parameter gradients, and updates. These separate-mode cases
+need a fresh run after restoring the framework's original hybrid checks.
 
 An independent CPU comparison against the pinned DiffSynth implementation
 matched the BF16 condition features, clean and noisy latents, sampled time and
@@ -230,9 +239,7 @@ checkpoint. The earlier Diffusers-backed implementation also ran a 64 x 64
 full-model smoke check on two Ascend 950DT devices (torch/torch-npu 2.10.0,
 Diffusers 0.41.0, Transformers 5.16.1), including real Qwen3-VL/VAE encoding
 for generation and editing and one AdamW update with FSDP2, BF16 computation,
-and gradient checkpointing. The native model also completed a 64 x 64 online
-AdamW update with the released weights, BF16, FSDP2, and 2 x 2 USP on four
-Ascend 950DT devices. Full-resolution throughput, memory requirements, and
+and gradient checkpointing. Full-resolution throughput, memory requirements, and
 image quality have yet to be measured.
 
 If Ascend reports `EI0020` because its default HCCL port is occupied, set

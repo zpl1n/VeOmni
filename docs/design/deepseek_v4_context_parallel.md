@@ -54,7 +54,7 @@ the compressor. It needs four GPUs. `cp_size=8` has never been run.
 | constraint | enforced at | if violated |
 |----|----|----|
 | `cp_size <= S / max(config.compress_rates)` | `plan_compressor_shard`, called by all three window compressors before their halo exchange | `ValueError` on the first forward |
-| `cp_size > 1` requires `ulysses_size == 1` for DeepSeek-V4 | `check_context_parallel_supported` | `NotImplementedError` at model build |
+| `cp_size > 1` requires `ulysses_size == 1` | `ParallelState.__post_init__` and `AcceleratorConfig._resolve_topology` | `NotImplementedError` at launch |
 | the model type must implement CP | `check_context_parallel_supported`, from `build_foundation_model` and `build_omni_model` | `NotImplementedError` at model build |
 | CP is GPU-only | `check_context_parallel_supported` | `NotImplementedError` at model build on Ascend/NPU |
 | explicit `position_ids` under either sequence-parallel mode | `DeepseekV4Model.forward` | `ValueError` on the first forward |

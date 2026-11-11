@@ -305,14 +305,14 @@ class QwenImage21Attention(nn.Module):
         key = apply_rotary(self.norm_k(key).to(value.dtype), rotary)
         parallel = get_parallel_state()
         if parallel.ulysses_enabled:
-            # Exchange sequence for heads within a CP shard. Keep Q/K/V in
+            # Exchange sequence for heads within the Ulysses group. Keep Q/K/V in
             # one collective so their backward exchanges stay in lockstep.
             qkv = torch.stack((query, key, value), dim=0).permute(3, 2, 0, 1, 4)
             qkv = gather_seq_scatter_heads(qkv, seq_dim=1, head_dim=0, group=parallel.ulysses_group)
             query, key, value = qkv.permute(2, 3, 1, 0, 4).unbind(0)
         query_start = 0
         if parallel.cp_enabled:
-            # CP keeps the local query rows and shares head-local K/V.
+            # CP keeps the local query rows and gathers the full K/V sequence.
             kv = torch.stack((key, value), dim=2)
             key, value = gather_outputs(kv, gather_dim=1, group=parallel.cp_group).unbind(2)
             query_start = parallel.cp_rank * query.shape[1]
