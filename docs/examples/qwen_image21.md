@@ -3,7 +3,8 @@
 This integration trains the base [Qwen/Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1)
 7B diffusion transformer. Qwen3-VL and the RGBA VAE remain frozen. It supports
 text-to-image and image-editing supervision, online encoding, and cached offline
-training through `tasks/train_dit.py`. It is not a reproduction of an unpublished
+training. Use `tasks/train_qwen_image21.py` for training with MFU logs and
+`tasks/train_dit.py` for embedding. It is not a reproduction of an unpublished
 Qwen training recipe, and does not implement reinforcement learning or Turbo distillation.
 
 The native VeOmni DiT follows the
@@ -89,7 +90,7 @@ training, adjust the remaining paths in this command.
 ```bash
 MODEL=/path/to/Qwen-Image-2.1
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NPROC_PER_NODE=8 NNODES=1 \
-  bash train.sh tasks/train_dit.py configs/dit/qwen_image21_sft.yaml \
+  bash train.sh tasks/train_qwen_image21.py configs/dit/qwen_image21_sft.yaml \
   --model.model_path "$MODEL/transformer" \
   --model.config_path "$MODEL/transformer/config.json" \
   --model.condition_model_path "$MODEL" \
@@ -133,6 +134,49 @@ Keep the same sequence-parallel group size when resuming a training checkpoint
 so each group continues to share a noise and timestep stream. When changing
 the group size, start a new run from the exported model weights.
 
+## MFU logging
+
+The model-specific entry point `tasks/train_qwen_image21.py` adds MFU logging
+without changing the shared trainer or FLOPs counter. It supports online and
+offline full DiT fine-tuning. Each optimizer step logs, for example:
+
+```text
+Step 10: DiT MFU=12.345%, TFLOPS/device=43.701, step_time=1.2345s
+```
+
+These numbers illustrate the log format. `training/mfu(%)` also appears in the
+progress bar and Wandb; the existing `mfu` Wandb key remains a fraction.
+The calculation is:
+
+```text
+MFU = global_DiT_training_FLOPs / (max_step_seconds * world_size * peak_TFLOPS_per_device * 1e12)
+```
+
+The [model-local counter](../../veomni/models/diffusers/qwen_image21/flops.py)
+uses the actual interleaved sequence length and separate reference-image
+attention blocks before Ulysses padding. It sums every sample and accumulation
+micro-batch, counts linear layers with the framework's analytical six-FLOPs-per-
+weight-use convention, and counts attention using its dense segment rectangles.
+Elementwise operations, optimizer FLOPs, frozen encoders, SP padding and
+checkpoint recomputation are excluded from the numerator. This is an analytical
+DiT MFU estimate, rather than a hardware profiler's utilization measurement.
+
+Timing starts after data fetching and SP broadcast, and ends after the optimizer
+finishes. It includes online condition encoding and communication, and excludes
+metric collection, logging and checkpoint saving. The slowest rank's time is
+used. FLOPs are summed only over DP peers so replicated SP samples are counted
+once. Online encoder time can therefore lower this DiT-only MFU relative to
+offline training. Disregard warmup steps when comparing performance. Metering
+adds device synchronization and two small reductions per step.
+
+For BF16 computation, the entry point reuses the existing
+[`get_device_flops()`](../../veomni/utils/count_flops.py) dense peak table.
+When the device is unrecognized or the compute precision is not BF16, the log
+reports `MFU=unavailable` while still reporting achieved TFLOPS. Supply the
+matching per-device dense peak with `--mfu.peak_tflops "$DENSE_TFLOPS_PER_DEVICE"`.
+Use the computation precision, rather than the FSDP master-weight precision.
+The generic `tasks/train_dit.py` remains usable for training without this meter.
+
 ## Embedding then offline training
 
 Use `configs/dit/qwen_image21_embedding.yaml` with the same model and dataset
@@ -141,7 +185,8 @@ the DiT or an optimizer. It writes Parquet shards under
 `output/qwen_image21_embedding`; one epoch processes the dataset once. Set the
 global batch size to match the chosen data-parallel launch size.
 
-Then launch `configs/dit/qwen_image21_offline.yaml`, supplying the same three
+Then launch `tasks/train_qwen_image21.py` with
+`configs/dit/qwen_image21_offline.yaml`, supplying the same three
 model-path overrides and `--data.train_path output/qwen_image21_embedding`.
 This stage reads the VAE configuration for latent normalization and samples
 new noise and a timestep each step. The framework saves both generators in the

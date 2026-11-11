@@ -228,6 +228,10 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         text_positions = (~image_mask).nonzero(as_tuple=True)[0]
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
+    if model._mfu_flops_counter is not None:
+        model._mfu_flops_counter.add(
+            hidden_states.shape[0], hidden_states.shape[1], context.shape[1], length, segments
+        )
     parallel = get_parallel_state()
     if parallel.ulysses_enabled:
         joint = slice_input_tensor(joint, dim=1, group=parallel.ulysses_group)
@@ -393,6 +397,7 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
         self.norm_out = QwenImage21OutputNorm(dim, config.eps)
         self.proj_out = nn.Linear(dim, config.out_channels or config.in_channels, bias=False)
         self.gradient_checkpointing = False
+        self._mfu_flops_counter = None
         self.post_init()
 
     def _init_weights(self, module):
