@@ -122,9 +122,11 @@ Keep the global batch size at 8 to accumulate four micro batches per rank in
 this example. The number of attention heads must be divisible by
 `ulysses_size`.
 
-The model slices the sequence before the Transformer blocks, exchanges sequence
-chunks for attention heads with Ulysses all-to-all, reverses that exchange after
-attention, and gathers target predictions for the weighted loss. Qwen-Image 2.1
+The model slices the sequence before the Transformer blocks. As in Qwen-Image,
+each Q/K/V tensor uses `[batch, sequence, heads, head_dim]` for Ulysses all-to-all,
+then applies full-sequence RoPE. It reverses the exchange after attention and
+gathers the hidden states, removing padding before the final normalization and
+output projection. The target predictions feed the weighted loss. Qwen-Image 2.1
 retains the DiffSynth single interleaved image/text stream and block-causal masks.
 Each online sequence-parallel peer runs the frozen condition encoders
 for its group's sample. Embedding can be run with the original topology

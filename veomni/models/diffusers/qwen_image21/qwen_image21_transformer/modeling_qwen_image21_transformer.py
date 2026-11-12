@@ -229,22 +229,25 @@ def joint_forward(model, hidden_states, encoder_hidden_states, timestep, img_sha
         vlm_text = ~img_mask[0][: text_mask.shape[1]]
         key_valid[:, text_positions] = text_mask.bool()[:, vlm_text]
     parallel = get_parallel_state()
+    block_modulation_mask = modulation_mask
     if parallel.ulysses_enabled:
+        # Keep full RoPE tables for attention after the sequence/head exchange.
+        padding = (-length) % parallel.ulysses_size
+        rotary = F.pad(rotary, (0, 0, 0, 0, 0, padding))
         joint = slice_input_tensor(joint, dim=1, group=parallel.ulysses_group)
-        rotary = slice_input_tensor(rotary, dim=0, group=parallel.ulysses_group)
         if modulation_mask is not None:
-            modulation_mask = slice_input_tensor(modulation_mask, dim=0, group=parallel.ulysses_group)
+            block_modulation_mask = slice_input_tensor(modulation_mask, dim=0, group=parallel.ulysses_group)
     for block in model.transformer_blocks:
-        args = (joint, modulation, rotary, modulation_mask, segments, key_valid, length)
+        args = (joint, modulation, rotary, block_modulation_mask, segments, key_valid, length)
         if torch.is_grad_enabled() and model.gradient_checkpointing:
             joint = model._gradient_checkpointing_func(block, *args)
         else:
             joint = block(*args)
-    output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
     if parallel.ulysses_enabled:
         # Every SP rank computes the full loss. Gather backward sums its
         # replicated gradients before FSDP averages over DP and SP ranks.
-        output = gather_outputs(output, gather_dim=1, group=parallel.ulysses_group)
+        joint = gather_outputs(joint, gather_dim=1, group=parallel.ulysses_group)[:, :length]
+    output = model.proj_out(model.norm_out(joint, temb, modulation_mask))
     return output[:, prefix_length:length]
 
 
@@ -301,15 +304,16 @@ class QwenImage21Attention(nn.Module):
         query = self.to_q(hidden_states).unflatten(-1, (self.heads, -1))
         key = self.to_k(hidden_states).unflatten(-1, (self.heads, -1))
         value = self.to_v(hidden_states).unflatten(-1, (self.heads, -1))
-        query = apply_rotary(self.norm_q(query).to(value.dtype), rotary)
-        key = apply_rotary(self.norm_k(key).to(value.dtype), rotary)
+        query = self.norm_q(query).to(value.dtype)
+        key = self.norm_k(key).to(value.dtype)
         parallel = get_parallel_state()
         if parallel.ulysses_enabled:
-            # Exchange sequence for heads within the Ulysses group. Keep Q/K/V in
-            # one collective so their backward exchanges stay in lockstep.
-            qkv = torch.stack((query, key, value), dim=0).permute(3, 2, 0, 1, 4)
-            qkv = gather_seq_scatter_heads(qkv, seq_dim=1, head_dim=0, group=parallel.ulysses_group)
-            query, key, value = qkv.permute(2, 3, 1, 0, 4).unbind(0)
+            # Match Qwen-Image: exchange each [B, S, H, D] tensor before RoPE.
+            query = gather_seq_scatter_heads(query, seq_dim=1, head_dim=2, group=parallel.ulysses_group)
+            key = gather_seq_scatter_heads(key, seq_dim=1, head_dim=2, group=parallel.ulysses_group)
+            value = gather_seq_scatter_heads(value, seq_dim=1, head_dim=2, group=parallel.ulysses_group)
+        query = apply_rotary(query, rotary)
+        key = apply_rotary(key, rotary)
         prefix_length = segments[-1][1] if segments else 0
         outputs = []
         for start, end, is_text in [*segments, (prefix_length, key.shape[1], False)]:
@@ -325,9 +329,7 @@ class QwenImage21Attention(nn.Module):
             outputs.append(self._attend(query[:, start:end], key[:, :key_end], value[:, :key_end], mask))
         output = torch.cat(outputs, dim=1)
         if parallel.ulysses_enabled:
-            output = gather_heads_scatter_seq(
-                output.permute(2, 1, 0, 3), seq_dim=1, head_dim=0, group=parallel.ulysses_group
-            ).permute(2, 1, 0, 3)
+            output = gather_heads_scatter_seq(output, seq_dim=1, head_dim=2, group=parallel.ulysses_group)
         return self.to_out[1](self.to_out[0](output.flatten(2).to(query.dtype)))
 
 

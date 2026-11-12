@@ -87,6 +87,16 @@ def parallel_config(world_size, ulysses):
     )
 
 
+def gloo_all_to_all(output_tensors, input_tensors, group=None, async_op=False):
+    """Exercise the list collective through Gloo's supported tensor collective."""
+    assert not async_op
+    inputs = torch.stack(input_tensors)
+    outputs = torch.empty_like(inputs)
+    torch.distributed.all_to_all_single(outputs, inputs, group=group)
+    for destination, source in zip(output_tensors, outputs.unbind(0), strict=True):
+        destination.copy_(source)
+
+
 def run_cpu_sp():
     torch.set_num_threads(1)
     torch.utils.checkpoint.DefaultDeviceType.set_device_type("cpu")
@@ -168,7 +178,10 @@ def run_cpu_sp():
 
 def main(output_dir, mode):
     if mode == "sp-cpu":
-        with patch("veomni.distributed.parallel_state.get_device_type", return_value="cpu"):
+        with (
+            patch("veomni.distributed.parallel_state.get_device_type", return_value="cpu"),
+            patch("torch.distributed.all_to_all", gloo_all_to_all),
+        ):
             run_cpu_sp()
         return
     if mode not in ("fp32", "bf16-gc", "sp-fp32", "sp-bf16-gc"):
