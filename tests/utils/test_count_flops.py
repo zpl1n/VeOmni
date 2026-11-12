@@ -729,9 +729,10 @@ class TestDeepseekV4Flops:
         ([(1, 8, 3, 11, 97), (1, 20, 6, 23, 339)], 5035008),
     ],
 )
-def test_qwen_image21_framework_flops(layouts, expected):
+@pytest.mark.parametrize("model_type", ["QwenImage21Transformer2DModel", "qwen_image_21"])
+def test_qwen_image21_framework_flops(layouts, expected, model_type):
     config = SimpleNamespace(
-        model_type="QwenImage21Transformer2DModel",
+        model_type=model_type,
         num_attention_heads=2,
         attention_head_dim=16,
         num_layers=2,

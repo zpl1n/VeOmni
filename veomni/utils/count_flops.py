@@ -82,7 +82,7 @@ class VeomniFlopsCounter:
 
     def __init__(self, config: PretrainedConfig):
         self.estimate_func = {
-            "QwenImage21Transformer2DModel": self._estimate_qwen_image21_flops,
+            "qwen_image_21": self._estimate_qwen_image21_flops,
             "qwen2_vl": self._estimate_qwen2_vl_flops,
             # the only difference between Qwen2 and Qwen2.5 for counting flops is the window attention
             # used in the ViT for Qwen2.5VL which is considered in the _estimate_qwen2_vl_flops function.
@@ -1544,7 +1544,11 @@ class VeomniFlopsCounter:
         tokens_sum = sum(batch_seqlens)
         if dit_flops_info is not None:
             kwargs["dit_flops_info"] = dit_flops_info
-        func = self.estimate_func.get(self.config.model_type, self._estimate_unknown_flops)
+        # Keep the FLOPs registry name independent of the checkpoint's model type.
+        model_type = self.config.model_type
+        if model_type == "QwenImage21Transformer2DModel":
+            model_type = "qwen_image_21"
+        func = self.estimate_func.get(model_type, self._estimate_unknown_flops)
         estimated_flops = func(tokens_sum, batch_seqlens, delta_time, **kwargs)
         promised_flops = get_device_flops()
         return estimated_flops, promised_flops
