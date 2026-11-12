@@ -80,15 +80,6 @@ def clone_sample(sample):
     }
 
 
-@pytest.mark.parametrize("edit,sequence,pairs", [(False, 11, 97), (True, 23, 339)])
-def test_framework_flops_layout_uses_full_interleaved_sequence(edit, sequence, pairs):
-    sample = sample_inputs(edit, requires_grad=False)
-    batch = {key: [value] for key, value in sample.items()}
-    assert QwenImage21Transformer2DModel.get_flops_info(batch) == [
-        (1, sample["hidden_states"].shape[1], sample["encoder_hidden_states"].shape[1], sequence, pairs)
-    ]
-
-
 @pytest.mark.parametrize("attention", ["eager", "sdpa", "veomni_sdpa"])
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "two-reference-edit"])
 @pytest.mark.parametrize("training", [False, True], ids=["prediction", "supervised"])

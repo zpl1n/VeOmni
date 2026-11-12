@@ -82,7 +82,6 @@ class VeomniFlopsCounter:
 
     def __init__(self, config: PretrainedConfig):
         self.estimate_func = {
-            "QwenImage21Transformer2DModel": self._estimate_qwen_image21_flops,
             "qwen2_vl": self._estimate_qwen2_vl_flops,
             # the only difference between Qwen2 and Qwen2.5 for counting flops is the window attention
             # used in the ViT for Qwen2.5VL which is considered in the _estimate_qwen2_vl_flops function.
@@ -117,22 +116,6 @@ class VeomniFlopsCounter:
 
     def _estimate_unknown_flops(self, tokens_sum, batch_seqlens, delta_time, **kwargs):
         return 0
-
-    def _estimate_qwen_image21_flops(self, tokens_sum, batch_seqlens, delta_time, dit_flops_info=(), **kwargs):
-        """Full DiT matmul FLOPs; exclude frozen encoders, SP padding and recomputation."""
-        config = self.config
-        dim = config.num_attention_heads * config.attention_head_dim
-        blocks = config.num_layers * (4 + 3 * config.mlp_ratio) * dim**2
-        total = 0
-        for batch, images, context, sequence, attention_pairs in dit_flops_info:
-            linear = batch * (
-                images * config.in_channels * dim
-                + context * (config.context_in_dim * dim + dim**2)
-                + sequence * ((config.out_channels or config.in_channels) * dim + blocks)
-            )
-            linear += (batch + int(config.causal_condition)) * (256 * dim + 6 * dim**2)
-            total += 6 * linear + 12 * batch * config.num_layers * dim * attention_pairs
-        return total / delta_time / 1e12
 
     @staticmethod
     def _compute_lm_head_params(hidden_size, vocab_size):
@@ -1498,7 +1481,6 @@ class VeomniFlopsCounter:
         lora_config: VeOmniLoraConfig | None = None,
         images_seqlens=None,
         freeze_vit: bool | None = None,
-        dit_flops_info=None,
     ):
         """
         Estimate the FLOPS based on the number of valid tokens in the current batch and the time taken.
@@ -1516,8 +1498,6 @@ class VeomniFlopsCounter:
                 models.
             freeze_vit (bool, optional): Whether the vision tower is frozen during full
                 fine-tuning. Ignored when ``lora_config`` is provided.
-            dit_flops_info (list, optional): Prepared DiT layouts containing batch size,
-                image tokens, context tokens, joint tokens and dense attention pairs.
 
         Returns:
             estimated_flops (float): The estimated FLOPS based on the input tokens and time.
@@ -1542,8 +1522,6 @@ class VeomniFlopsCounter:
             kwargs["freeze_vit"] = freeze_vit
 
         tokens_sum = sum(batch_seqlens)
-        if dit_flops_info is not None:
-            kwargs["dit_flops_info"] = dit_flops_info
         func = self.estimate_func.get(self.config.model_type, self._estimate_unknown_flops)
         estimated_flops = func(tokens_sum, batch_seqlens, delta_time, **kwargs)
         promised_flops = get_device_flops()

@@ -274,13 +274,6 @@ class EnvironMeterCallback(Callback):
 
         step_env_metrics.update(step_train_metrics)
 
-        if (
-            getattr(getattr(self.trainer.model, "model_config", None), "model_type", None)
-            == "QwenImage21Transformer2DModel"
-        ):
-            step_train_metrics["training/mfu(%)"] = 100 * step_env_metrics["mfu"]
-            step_env_metrics["training/mfu(%)"] = step_train_metrics["training/mfu(%)"]
-
         self.trainer.step_train_metrics = step_train_metrics
         self.trainer.step_env_metrics = step_env_metrics
 
