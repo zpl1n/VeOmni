@@ -59,6 +59,7 @@ from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen
 )
 from veomni.optim import build_optimizer
 from veomni.trainer.dit_trainer import DiTDataCollator, DiTTrainer, OfflineEmbeddingSaver
+from veomni.utils import helper
 from veomni.utils.device import get_device_type
 
 
@@ -353,6 +354,8 @@ def test_legacy_condition_config_has_no_recipe_selector(tmp_path):
 class _Runtime:
     def __init__(self, model, condition):
         self.model = model
+        self.model_config = model.config
+        self.unwrapped_module = model
         self.condition_model = condition
         self.parallel_state = parallel_state.get_parallel_state_by_name("base")
 
@@ -362,7 +365,7 @@ class _Runtime:
 
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "edit"])
 @pytest.mark.parametrize("offline", [False, True], ids=["online", "offline"])
-def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit, offline):
+def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit, offline, monkeypatch):
     batch = raw_batch(tmp_path, edit)
     condition = condition_model(snapshot, edit=edit)
     if offline:
@@ -378,13 +381,23 @@ def test_native_trainer_updates_only_dit_and_roundtrips(snapshot, tmp_path, edit
     trainer.base = SimpleNamespace(
         num_micro_batches=1,
         model=_Runtime(model, condition),
+        environ_meter=helper.EnvironMeter(model.config, global_batch_size=1, empty_cache_steps=0),
         device=torch.device("cpu"),
         LOG_SAMPLE=False,
         model_fwd_context=nullcontext(),
         model_bwd_context=nullcontext(),
     )
     trainer.training_task = "offline_training" if offline else "online_training"
+    meter = trainer.base.environ_meter
+    meter.add(batch)
     loss, losses = trainer.forward_backward_step(batch)
+    assert len(meter.dit_flops_info) == 1
+    monkeypatch.setattr("veomni.utils.count_flops.get_device_flops", lambda: 354)
+    monkeypatch.setattr(helper, "compute_device_memory_metrics", lambda: {})
+    metrics = meter.step(delta_time=1.0, global_step=1)
+    assert 0 < metrics["mfu"] < 1
+    assert meter.dit_flops_info == meter.batch_seqlens == []
+    assert meter.step(delta_time=1.0, global_step=2)["mfu"] == 0
     assert loss.ndim == 0 and torch.isfinite(loss)
     torch.testing.assert_close(loss, losses["mse_loss"])
     gradients = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]

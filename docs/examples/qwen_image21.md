@@ -245,3 +245,28 @@ index, BCHW noise, dtype, and device backend. Set
 SDPA selection. VeOmni uses per-rank generators and FSDP2, so its seed identifies
 a VeOmni run. Resume runs started with the previous preprocessing or timestep
 rules on their original revision to preserve their training inputs.
+
+## MFU in WandB
+
+Training through `tasks/train_dit.py` uses the framework's
+`VeomniFlopsCounter` Qwen-Image 2.1 formula. Enable `train.wandb.enable`
+and view the existing `mfu` metric in WandB. Values are fractions: `0.135`
+means 13.5%. The terminal progress bar is unchanged; no separate task,
+callback or model-specific MFU option is required.
+
+After condition processing, `DiTTrainer.forward_backward_step` calls the
+model's `get_flops_info` to supply actual image/context token counts, joint
+sequence lengths and segmented dense attention pairs to
+`EnvironMeter.add_dit_flops`. These are logical full-sequence layouts before
+Ulysses padding. The meter accumulates micro-batches, uses the registered
+formula, reduces across DP peers and clears the layouts after each step.
+The existing `WandbTraceCallback` publishes the resulting `mfu` on rank zero.
+
+The analytical formula counts linear layers with six FLOPs per weight use
+and segmented dense attention with twelve FLOPs per attention width/pair.
+Frozen encoders, elementwise operations, optimizer FLOPs, SP padding and
+checkpoint recomputation are excluded. Online condition encoding still
+contributes to the measured step time. Timing and peak-device FLOPs follow
+the framework's existing conventions. Devices absent from `get_device_flops()`
+return an infinite peak and therefore a zero MFU; that zero is unavailable
+hardware information, not measured utilization.

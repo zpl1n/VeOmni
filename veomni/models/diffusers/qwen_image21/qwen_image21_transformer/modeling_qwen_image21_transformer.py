@@ -428,6 +428,24 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
             raise ValueError("Qwen-Image 2.1 img_shapes must be positive (1, height, width) image grids.")
         return result
 
+    @staticmethod
+    def get_flops_info(batch):
+        """Return logical matmul layouts from prepared condition batches, before SP padding."""
+        layouts = []
+        for images, context, shapes, mask in zip(
+            batch["hidden_states"], batch["encoder_hidden_states"], batch["img_shapes"], batch["img_mask"]
+        ):
+            lengths = [prod(shape) for shape in shapes]
+            slots = mask[0].tolist()
+            tokens = list(
+                chain.from_iterable(repeat(value, _LATENT_TOKENS_PER_IMAGE_SLOT if value else 1) for value in slots)
+            )
+            segments = _prefix_segments(tokens, lengths)
+            sequence = len(tokens)
+            pairs = sum((end - start) * end for start, end, _ in segments) + lengths[-1] * sequence
+            layouts.append((images.shape[0], images.shape[1], context.shape[1], sequence, pairs))
+        return layouts
+
     def predict_noise(
         self,
         hidden_states,

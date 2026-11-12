@@ -532,6 +532,12 @@ class DiTTrainer:
         with torch.no_grad():
             micro_batch = self.condition_model.process_condition(**micro_batch)
 
+        if (
+            getattr(getattr(self.base.model, "model_config", None), "model_type", None)
+            == "QwenImage21Transformer2DModel"
+        ):
+            self.base.environ_meter.add_dit_flops(self.base.model.unwrapped_module.get_flops_info(micro_batch))
+
         with use_parallel_state(self.base.model.parallel_state), self.base.model_fwd_context:
             outputs = self.base.model(**micro_batch)
 
