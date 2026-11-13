@@ -1,6 +1,7 @@
 import math
 from io import BytesIO
 
+import PIL
 import PIL.Image
 import requests
 
