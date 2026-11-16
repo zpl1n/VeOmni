@@ -1,62 +1,11 @@
 # Ascend A3 Docker Image Build and Usage Guide
 
-## CANN 9.2.1 images
-
-These Dockerfiles install into system Python on every supported architecture.
-They include torch 2.10.0, torch-npu 2.10.0.post7, Transformers 5.16.1,
-Triton-Ascend 3.2.2, development dependencies (including patchgen), and a
-persistent uv package cache. A project `uv sync` creates its own environment;
-it does not automatically use the system packages.
-
-Build from the repository root on a matching host architecture:
-
-```bash
-docker build --platform linux/arm64 \
-  -f docker/ascend/Dockerfile.ascend_9.2.1_torch_npu2.10.0.post7_a3 \
-  -t veomni:cann921-a3-arm64 .
-```
-
-Quay publication of the following product tag is pending. Use the local
-build above until publication is confirmed; see [image availability](supported_tags.md).
-After publication, pull the matching architecture (shown here for ARM64):
-
-```bash
-docker pull --platform linux/arm64 quay.io/ascend/veomni:v0.1.12-cann9.2.1-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12-veomni
-```
-
-Run the locally built ARM64 image with host driver access; mount only the
-source directory you intend to test, leaving the image contents in `/app` intact:
-
-```bash
-devices=()
-for device in /dev/davinci[0-9]* /dev/davinci_manager /dev/devmm_svm /dev/hisi_hdc; do
-  [ ! -e "$device" ] || devices+=(--device "$device")
-done
-docker run --rm -it --network host --shm-size=32g \
-  "${devices[@]}" \
-  -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
-  -v /usr/local/dcmi:/usr/local/dcmi:ro \
-  -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
-  -v "$PWD":/workspace/VeOmni -w /workspace/VeOmni \
-  veomni:cann921-a3-arm64 bash
-```
-
-The existing [A2 builder](../../../.github/workflows/docker-build-ascend-a2.yml)
-and [A3 builder](../../../.github/workflows/docker-build-ascend-a3.yml) build
-these CANN 9.2.1 Dockerfiles on matching native runners. They support manual
-dispatch, published releases, and path-filtered pushes to `main`. Upstream
-builds publish to Quay using repository secrets. Build jobs are restricted
-to the `ByteDance-Seed` owner. See the
-[workflow and tag rules](overview.md#build-and-publication-workflows).
-The NPU unit/e2e workflows continue to use their existing environment.
-See [validation scope and cache details](overview.md#validation-scope).
-
-## CANN 9.1.0 instructions
-
-The instructions below describe the existing CANN 9.1.0 images.
-
 ## Overview
 This guide provides step-by-step instructions for building and using the Ascend A3 Docker image for VeOmni framework. The image is based on Huawei's Ascend CANN platform and includes all necessary dependencies for running multi-modal models on Ascend A3 accelerators.
+
+The CANN 9.2.1 image uses system Python with Triton 3.5.0 and
+Triton-Ascend 3.2.2. Development dependencies and a persistent uv cache are
+included; project environments created by `uv sync` remain separate.
 
 ## Prerequisites
 - Docker installed on your system
@@ -70,11 +19,11 @@ First, pull the Huawei Ascend CANN base image. **Note: This image is for ARM64 a
 You can find the latest official Ascend CANN images at: [Ascend Hub](https://www.hiascend.com/developer/ascendhub/detail/17da20d1c2b6493cb38765adeba85884)
 
 ```bash
-docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-a3-ubuntu22.04-py3.12
+docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.1-a3-ubuntu22.04-py3.12
 ```
 
 ## Step 2: Build the Custom Image
-Build the GDN-ready VeOmni Ascend A3 image using the provided Dockerfile. It includes `torch-npu==2.10.0.post2`, `triton-ascend`, and `fla_npu`. The existing `Dockerfile.ascend_9.0.0_a3` remains available for the general-purpose image.
+Build the GDN-ready VeOmni Ascend A3 image using the provided Dockerfile. It includes `torch-npu==2.10.0.post7`, `triton-ascend==3.2.2`, and `fla_npu`. The existing `Dockerfile.ascend_9.0.0_a3` remains available for the general-purpose image.
 
 **Note:** Proxy settings are optional and only needed if your server requires proxy access to the internet. Remove the proxy arguments if not needed.
 
@@ -87,7 +36,7 @@ docker build \
   --build-arg https_proxy=http://<user>:<pass>@<host>:<port> \
   --build-arg no_proxy=localhost,127.0.0.1 \
   -t ascend-a3-env:v1 \
-  -f docker/ascend/Dockerfile.ascend_9.1.0_torch_npu2.10.0.post2_a3 \
+  -f docker/ascend/Dockerfile.ascend_9.2.1_torch_npu2.10.0.post7_a3 \
   .
 ```
 
@@ -95,16 +44,16 @@ Without proxy (simplified):
 ```bash
 docker build \
   -t ascend-a3-env:v1 \
-  -f docker/ascend/Dockerfile.ascend_9.1.0_torch_npu2.10.0.post2_a3 \
+  -f docker/ascend/Dockerfile.ascend_9.2.1_torch_npu2.10.0.post7_a3 \
   .
 ```
 
 ### Image Components
 The built image includes:
 - Ubuntu 22.04 with Python 3.12
-- Ascend CANN 9.1.0 runtime
+- Ascend CANN 9.2.1 runtime
 - VeOmni framework with NPU support
-- torch-npu 2.10.0.post2, triton-ascend, and fla_npu for GDN
+- torch-npu 2.10.0.post7, triton-ascend 3.2.2, and fla_npu for GDN
 - TorchCodec for efficient video processing
 - All necessary development tools and dependencies
 
