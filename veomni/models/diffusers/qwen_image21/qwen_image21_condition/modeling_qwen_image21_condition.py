@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import torch
-from diffusers import AutoencoderKLQwenImage21
 from PIL import Image
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
@@ -18,6 +17,7 @@ from veomni.models.modeling_base import VeOmniPreTrainedModel
 from veomni.utils.device import get_device_type
 
 from .configuration_qwen_image21_condition import QwenImage21ConditionModelConfig
+from .vae_encoder import QwenImage21VAEEncoder
 
 
 _TRAINING_TIME_SCALE = 1000
@@ -68,7 +68,7 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         self.timestep_generator = torch.Generator(device="cpu").manual_seed(seed)
         base = config.base_model_path
         self._sigmas, self._timesteps, self._loss_weights = _build_training_schedule(config.num_train_timesteps)
-        self.vae_config = AutoencoderKLQwenImage21.load_config(base, subfolder=config.vae_subfolder)
+        self.vae_config = QwenImage21VAEEncoder.load_config(base, subfolder=config.vae_subfolder)
         if self.vae_config.get("scale_factor_spatial", 16) != 16 or self.vae_config["z_dim"] != 64:
             raise ValueError("Qwen-Image 2.1 requires a 64-channel VAE with spatial compression factor 16.")
         # Offline training only needs the VAE normalization metadata.
@@ -81,9 +81,15 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
             dtype=getattr(torch, config.text_encoder_dtype),
             attn_implementation=config.text_encoder_attn_implementation,
         ).eval()
-        self.vae = AutoencoderKLQwenImage21.from_pretrained(
-            base, subfolder=config.vae_subfolder, torch_dtype=getattr(torch, config.vae_dtype)
-        ).eval()
+        self.vae, loading_info = QwenImage21VAEEncoder.from_pretrained(
+            base,
+            subfolder=config.vae_subfolder,
+            torch_dtype=getattr(torch, config.vae_dtype),
+            output_loading_info=True,
+        )
+        if any(loading_info.values()):
+            raise ValueError(f"Incompatible Qwen-Image 2.1 VAE encoder checkpoint: {loading_info}")
+        self.vae.eval()
         self.requires_grad_(False)
         system_message = [{"role": "system", "content": [{"type": "text", "text": _SYSTEM_PROMPT}]}]
         system_tokens = self.processor.apply_chat_template(system_message, tokenize=True, return_dict=False)
@@ -229,8 +235,8 @@ class QwenImage21ConditionModel(VeOmniPreTrainedModel):
         pixels = torch.from_numpy(np.array(image, dtype=np.float32)).to(device=self.vae.device, dtype=self.vae.dtype)
         # Scale in the VAE compute dtype, matching DiffSynth's preprocessing order.
         pixels = (pixels * (2 / 255) + (-1)).permute(2, 0, 1).unsqueeze(0).unsqueeze(2)
-        posterior = self.vae.encode(pixels).latent_dist
-        return posterior.parameters, (1, posterior.parameters.shape[-2], posterior.parameters.shape[-1])
+        moments = self.vae(pixels)
+        return moments, (1, *moments.shape[-2:])
 
     @torch.no_grad()
     def get_condition(self, inputs, images, outputs=None, **kwargs) -> dict[str, Any]:

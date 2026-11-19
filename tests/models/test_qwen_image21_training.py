@@ -26,10 +26,10 @@ from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
+import diffusers
 import pytest
 import torch
 from datasets import Dataset
-from diffusers import AutoencoderKLQwenImage21, FlowMatchEulerDiscreteScheduler, QwenImage21Pipeline
 from PIL import Image
 from tokenizers.pre_tokenizers import ByteLevel
 from transformers import (
@@ -54,6 +54,7 @@ from veomni.models.diffusers.qwen_image21.qwen_image21_condition.configuration_q
 from veomni.models.diffusers.qwen_image21.qwen_image21_condition.modeling_qwen_image21_condition import (
     QwenImage21ConditionModel,
 )
+from veomni.models.diffusers.qwen_image21.qwen_image21_condition.vae_encoder import QwenImage21VAEEncoder
 from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen_image21_transformer import (
     QwenImage21Transformer2DModel,
 )
@@ -74,7 +75,7 @@ def cpu_rank(tmp_path_factory):
     previous_threads = torch.get_num_threads()
     rendezvous = tmp_path_factory.mktemp("qwen21_gloo") / "rendezvous"
     with pytest.MonkeyPatch.context() as patch, torch.random.fork_rng(devices=[]):
-        patch.setattr("diffusers.models.normalization.is_torch_npu_available", lambda: False)
+        patch.setattr("diffusers.models.normalization.is_torch_npu_available", lambda: False, raising=False)
         patch.setattr(modeling_qwen_image21_condition, "get_device_type", lambda: "cpu")
         patch.setattr(parallel_state, "get_device_type", lambda: "cpu")
         torch.set_num_threads(1)
@@ -161,17 +162,16 @@ def snapshot(tmp_path_factory, cpu_rank):
     )
     config._attn_implementation = "eager"
     Qwen3VLForConditionalGeneration(config).save_pretrained(root / "text_encoder")
-    AutoencoderKLQwenImage21(
+    vae = getattr(diffusers, "AutoencoderKLQwenImage21", QwenImage21VAEEncoder)(
         base_dim=4,
-        decoder_base_dim=4,
         z_dim=64,
         dim_mult=[1, 1, 1, 1, 1],
         num_res_blocks=1,
         attn_scales=[],
         temperal_downsample=[False, True, True, True],
-        latents_mean=[0.1] * 64,
-        latents_std=[1.5] * 64,
-    ).save_pretrained(root / "vae")
+    )
+    vae.register_to_config(latents_mean=[0.1] * 64, latents_std=[1.5] * 64, scale_factor_spatial=16)
+    vae.save_pretrained(root / "vae")
     return root
 
 
@@ -253,22 +253,6 @@ def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit, dtype):
     assert encoded["latents"][0].shape == (1, 128, 1, 2, 2)
     assert encoded["latents"][0].dtype == encoded["encoder_hidden_states"][0].dtype == getattr(torch, dtype)
     assert int(encoded["img_mask"][0].sum()) == int(edit)
-    # The published pipeline also extracts pre-norm features for short prompts.
-    reference_pipeline = QwenImage21Pipeline(
-        scheduler=FlowMatchEulerDiscreteScheduler(),
-        vae=online.vae,
-        text_encoder=online.text_encoder,
-        processor=online.processor,
-        transformer=None,
-    )
-    target_size = online._prepare_image(batch["images"][0][-1]).size
-    references = [online._prepare_image(image, target_size=target_size) for image in batch["images"][0][:-1]]
-    with torch.no_grad():
-        reference_prompt = reference_pipeline.encode_prompt("a red square", image=references or None, device="cpu")
-    assert_tree_equal(
-        [encoded[key][0] for key in ("encoder_hidden_states", "encoder_hidden_states_mask", "img_mask")],
-        reference_prompt,
-    )
     # Alpha reaches the VAE: changing only transparency must change its posterior.
     opaque_batch = {**batch, "images": [[image.copy() for image in batch["images"][0]]]}
     opaque_batch["images"][0][-1].putalpha(255)
@@ -317,6 +301,40 @@ def test_rgba_cache_offline_and_rng_restore(snapshot, tmp_path, edit, dtype):
         reference = ((encoded["edit_latents"][0][0][:, :64] - mean) / std).flatten(2).transpose(1, 2)
         torch.testing.assert_close(actual["hidden_states"][0][:, :4], reference)
     assert int(actual["img_mask"][0].sum()) * 4 == actual["hidden_states"][0].shape[1]
+
+
+@pytest.mark.skipif(
+    not hasattr(diffusers, "QwenImage21Pipeline"), reason="Optional Diffusers 0.41 reference comparison"
+)
+@pytest.mark.parametrize("edit", [False, True])
+@pytest.mark.parametrize("dtype", ["float32", "bfloat16"])
+@pytest.mark.launch_plan(provider=_CPU_LAUNCH)
+def test_upstream_condition_encoding(snapshot, tmp_path, edit, dtype):
+    batch = raw_batch(tmp_path, edit)
+    online = condition_model(snapshot, edit=edit, dtype=dtype)
+    encoded = online.get_condition(**batch)
+    official = diffusers.AutoencoderKLQwenImage21.from_pretrained(
+        snapshot, subfolder="vae", torch_dtype=getattr(torch, dtype)
+    )
+    pixels = torch.linspace(-1, 1, 4 * 32 * 64).reshape(1, 4, 1, 32, 64).to(getattr(torch, dtype))
+    with torch.no_grad():
+        torch.testing.assert_close(online.vae(pixels), official.encode(pixels).latent_dist.parameters, atol=0, rtol=0)
+    # The published pipeline also extracts pre-norm features for short prompts.
+    reference_pipeline = diffusers.QwenImage21Pipeline(
+        scheduler=diffusers.FlowMatchEulerDiscreteScheduler(),
+        vae=online.vae,
+        text_encoder=online.text_encoder,
+        processor=online.processor,
+        transformer=None,
+    )
+    target_size = online._prepare_image(batch["images"][0][-1]).size
+    references = [online._prepare_image(image, target_size=target_size) for image in batch["images"][0][:-1]]
+    with torch.no_grad():
+        reference_prompt = reference_pipeline.encode_prompt("a red square", image=references or None, device="cpu")
+    assert_tree_equal(
+        [encoded[key][0] for key in ("encoder_hidden_states", "encoder_hidden_states_mask", "img_mask")],
+        reference_prompt,
+    )
 
 
 @pytest.mark.launch_plan(provider=_CPU_LAUNCH)

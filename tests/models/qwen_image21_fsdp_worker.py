@@ -25,7 +25,6 @@ from unittest.mock import patch
 
 import torch
 import torch.nn.functional as F
-from diffusers import QwenImage21Transformer2DModel as OfficialTransformer
 from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.tensor import DTensor
@@ -204,7 +203,7 @@ def main(output_dir, mode):
         with use_parallel_state("base"):
             torch.manual_seed(427)
             config = tiny_config()
-            reference = OfficialTransformer(**config.to_diffuser_dict()).eval()
+            reference = QwenImage21Transformer2DModel(config).eval()
             unsharded = QwenImage21Transformer2DModel(tiny_config()).train()
             unsharded.load_state_dict(reference.state_dict(), strict=True)
             checkpoint = Path(output_dir) / "model"
@@ -278,12 +277,9 @@ def main(output_dir, mode):
             for step in range(2):
                 for optimizer in optimizers:
                     optimizer.zero_grad(set_to_none=True)
-                # Diffusers selects fused RMSNorm by package availability on some versions;
-                # a CPU reference must always use CPU math, even on an Ascend host.
                 if not bf16:
-                    with patch("diffusers.models.normalization.is_torch_npu_available", return_value=False):
-                        cpu_predictions, cpu_loss = reference_forward(reference, cpu_samples, cpu_targets)
-                        cpu_loss.backward()
+                    cpu_predictions, cpu_loss = reference_forward(reference, cpu_samples, cpu_targets)
+                    cpu_loss.backward()
                 predictions, loss = candidate_forward(unsharded, samples, targets)
                 with use_parallel_state("sequence" if sequence_parallel else "base"):
                     sharded_predictions, sharded_loss = candidate_forward(sharded, samples, targets)

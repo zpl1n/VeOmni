@@ -521,15 +521,9 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
         return QwenImage21ModelOutput(loss={"mse_loss": torch.cat(losses).mean()}, predictions=predictions)
 
     def save_pretrained(self, path, **kwargs):
-        # Reuse the Diffusers serializer for standalone export. A meta shell
-        # shares the live tensors and preserves the published file layout.
-        from diffusers import QwenImage21Transformer2DModel as DiffusersTransformer
+        from .checkpoint import QwenImage21Transformer2DModel as Checkpoint
 
-        with torch.device("meta"):
-            export = DiffusersTransformer(**self.config.to_diffuser_dict())
-        export.register_to_config(ops_implementation=dict(self.config.ops_implementation))
-        export.load_state_dict(self.state_dict(), strict=True, assign=True)
-        return export.save_pretrained(path, **kwargs)
+        return Checkpoint(self).save_pretrained(path, **kwargs)
 
     @classmethod
     def from_pretrained(cls, path, *args, **kwargs):
@@ -574,14 +568,14 @@ class QwenImage21Transformer2DModel(VeOmniPreTrainedModel):
 
         # Legacy Diffusers variants and binary weights use Diffusers' resolver.
         # Standard safetensors above stream directly into the native model.
-        from diffusers import QwenImage21Transformer2DModel as DiffusersTransformer
+        from .checkpoint import QwenImage21Transformer2DModel as Checkpoint
 
         dispatch = {
             key: kwargs.pop(key)
             for key in ("device_map", "max_memory", "offload_folder", "offload_buffers")
             if key in kwargs
         }
-        loaded = DiffusersTransformer.from_pretrained(path, **config.to_diffuser_dict(), **kwargs)
+        loaded = Checkpoint.from_pretrained(path, **config.to_diffuser_dict(), **kwargs)
         source = loaded[0] if isinstance(loaded, tuple) else loaded
         model = super().from_pretrained(
             None, *args, config=config, state_dict=source.state_dict(), dtype=source.dtype, **dispatch

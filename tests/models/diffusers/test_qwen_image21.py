@@ -18,10 +18,10 @@ from __future__ import annotations
 
 from math import prod
 
+import diffusers
 import pytest
 import torch
 import torch.nn.functional as F
-from diffusers import QwenImage21Transformer2DModel as OfficialTransformer
 
 from tests.models.compare import assert_outputs_and_grads_match
 from tests.models.tiny_configs import tiny_qwen_image21_config
@@ -31,10 +31,16 @@ from veomni.models.diffusers.qwen_image21.qwen_image21_transformer.modeling_qwen
 )
 
 
+OfficialTransformer = getattr(diffusers, "QwenImage21Transformer2DModel", None)
+requires_upstream = pytest.mark.skipif(
+    OfficialTransformer is None, reason="Optional Diffusers 0.41 reference comparison"
+)
+
+
 @pytest.fixture(autouse=True)
 def cpu_diffusers_normalization(monkeypatch):
     # Package availability must not select NPU RMSNorm for CPU references.
-    monkeypatch.setattr("diffusers.models.normalization.is_torch_npu_available", lambda: False)
+    monkeypatch.setattr("diffusers.models.normalization.is_torch_npu_available", lambda: False, raising=False)
 
 
 def tiny_config(attention="sdpa"):
@@ -83,6 +89,7 @@ def clone_sample(sample):
 @pytest.mark.parametrize("attention", ["eager", "sdpa", "veomni_sdpa"])
 @pytest.mark.parametrize("edit", [False, True], ids=["text-to-image", "two-reference-edit"])
 @pytest.mark.parametrize("training", [False, True], ids=["prediction", "supervised"])
+@requires_upstream
 def test_upstream_predictions_input_and_parameter_gradients(attention, edit, training):
     torch.manual_seed(41)
     config = tiny_config(attention)
@@ -162,19 +169,15 @@ def test_ragged_batch_averages_target_losses_and_gradients():
 def test_checkpoint_roundtrip_preserves_upstream_names_and_attention(tmp_path, save_options, load_options):
     torch.manual_seed(7)
     config = tiny_config()
-    official = OfficialTransformer(**config.to_diffuser_dict())
     model = QwenImage21Transformer2DModel(config).eval()
-    torch.testing.assert_close(model.txt_in.text_norm.weight, official.txt_in.text_norm.weight, atol=0, rtol=0)
-    model.load_state_dict(official.state_dict(), strict=True)
     model.save_pretrained(tmp_path, **save_options)
     reloaded = QwenImage21Transformer2DModel.from_pretrained(tmp_path, ops_implementation=tiny_ops(), **load_options)
-    diffusers_reload = OfficialTransformer.from_pretrained(tmp_path, **load_options).eval()
     assert reloaded.config.model_type == "QwenImage21Transformer2DModel"
     assert reloaded.config.condition_model_type == "QwenImage21ConditionModel"
-    assert reloaded.state_dict().keys() == official.state_dict().keys()
-    for key, expected in official.state_dict().items():
-        torch.testing.assert_close(reloaded.state_dict()[key], expected, atol=0, rtol=0)
-        torch.testing.assert_close(diffusers_reload.state_dict()[key], expected, atol=0, rtol=0)
+    torch.testing.assert_close(reloaded.state_dict(), model.state_dict(), atol=0, rtol=0)
+    if OfficialTransformer is not None:
+        official = OfficialTransformer.from_pretrained(tmp_path, **load_options)
+        torch.testing.assert_close(official.state_dict(), model.state_dict(), atol=0, rtol=0)
     sample = sample_inputs(True, requires_grad=False)
     with torch.no_grad():
         expected = model(**sample, return_dict=False)[0]
@@ -182,6 +185,7 @@ def test_checkpoint_roundtrip_preserves_upstream_names_and_attention(tmp_path, s
     torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
 
+@requires_upstream
 def test_masked_first_prompt_query_has_finite_upstream_gradients():
     torch.manual_seed(11)
     config = tiny_config("eager")

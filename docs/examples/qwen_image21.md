@@ -15,7 +15,9 @@ VAE directly, following the stages in the
 
 ## Environment and weights
 
-Use the project's locked environment: Diffusers 0.41.0 and Transformers 5.16.1.
+The frozen RGBA encoder uses the single-frame path from [DiffSynth-Studio](https://github.com/modelscope/DiffSynth-Studio/blob/08fdc0da8f41426885d9432e9007e6e460a4c30d/diffsynth/models/qwen_image_21_vae.py) and reads the released VAE safetensors directly. The Parquet cache stores raw encoder moments as before. Diffusers 0.41 is only needed in a separate environment for optional upstream numerical comparisons.
+
+Use the project's locked environment: Diffusers 0.37.0 and Transformers 5.16.1.
 
 ```bash
 uv sync --extra npu_aarch64 --dev  # Ascend ARM; use npu for x86, gpu for NVIDIA
